@@ -16,11 +16,13 @@ extern "C" {
 #include "stm32wl3x_ll_dma.h"
 #include "stm32wl3x_ll_usart.h"
 #include "stm32wl3x_ll_lpawur.h"
-#include "app_conf.h"
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 #include "stm32wl3x_nucleo.h"
 #include<stdio.h>
+#include "app_conf.h"
+#include "crc_4wkup_rf.h"
+#include "stm32_lpm.h"
+/* Private includes ----------------------------------------------------------*/
+
 void Error_Handler(void);
 #ifdef __cplusplus
 }
