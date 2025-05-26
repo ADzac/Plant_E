@@ -1,29 +1,30 @@
 #include "main.h"
 
-/* Private includes ----------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 #define MSG_SIZE
 #define PAYLOAD_LEN 7
 #define MIN(a,b)                        (((a) < (b))? (a) : (b))
 
 uint8_t vectcTxBuffV2[15];
 uint8_t LPAWUR_Payload[8];
-int32_t  rssi_min = 0 ;
-int32_t rssi_max = -150 ;
+
 uint8_t mode = 0; // Rx = 1 , Tx = 0
 uint8_t packet_Received = 0;
-uint8_t checkForID = 0;
+uint8_t ID = 1;
+uint8_t checkForID = 5;
 
-/* USER CODE BEGIN PV */
-__IO uint32_t aRandom16bit[100];
-__IO int32_t rssi = 0;
+uint8_t aRandom16bit[100];
 uint8_t LPAWUR_Payload[8];
+int16_t rssi = 0;
+int16_t  rssi_min = 0 ;
+int16_t rssi_max = -150 ;
 
 SMRSubGConfig MRSUBG_RadioInitStruct;
 MRSubG_PcktBasicFields MRSUBG_PacketSettingsStruct;
 SLPAWUR_RFConfig LPAWUR_RadioInitStruct;
 SLPAWUR_FrameInit LPAWUR_FrameInitStruct;
 
-/* Private function prototypes -----------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -33,60 +34,40 @@ void CreateLPAWURFrameV2(uint8_t j,uint8_t aRandom16bit);
 void EvaluateCrc(uint8_t * LPAWUR_payload);
 void UTIL_LPM_EnterLowPower(void);
 void UTIL_LPM_Init(void);
+void RX_TX_Init(void);
 void MX_APPE_Process(void);
 void GotoRx(void);
 void MX_APPE_Idle(void);
 static void MX_LPAWUR_Init(void);
 void UTIL_LPM_Init( void );
 
-/* Private user code ---------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
 int main(void)
 {
 	HAL_Init();
 
 	SystemClock_Config();
-
 	PeriphCommonClock_Config();
-
 	MX_GPIO_Init();
 	MX_MRSUBG_Init();
 	MX_LPAWUR_Init();
 	UTIL_LPM_Init();
-	COM_InitTypeDef COM_Init = {0};
-	COM_Init.BaudRate= 115200;
-	COM_Init.HwFlowCtl = COM_HWCONTROL_NONE;
-	COM_Init.WordLength = COM_WORDLENGTH_8B;
-	COM_Init.Parity = COM_PARITY_NONE;
-	COM_Init.StopBits = COM_STOPBITS_1;
-	BSP_COM_Init(COM1, &COM_Init);
-	UTIL_LPM_Init();
-	/* USER CODE BEGIN APPE_Init_2 */
-	BSP_LED_Init(LD2);
-	BSP_LED_Init(LD3);
-	/* Init SW2 User Button */
-	BSP_PB_Init(B2, BUTTON_MODE_GPIO); // if needed
-	/* Payload length config */
-	HAL_MRSubG_PktBasicSetPayloadLength(15);
-	/* Set Manchester Coding Type */
-	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
-	/* Set TX Mode to Normal Mode*/
-	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
-	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
-	/* Create the data to transmit */
+	RX_TX_Init();
+
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
 	for (uint16_t j = 0;j<200;j++){
 		 if (mode == 0){
 			RandomNumbersGeneration(j);
 			mode = 1;
+		}
+		else{
+			GotoRx();
+			if (mode == 1){
+				MX_APPE_Idle();
 			}
-			else{
-				GotoRx();
-				if (mode == 1){
-					MX_APPE_Idle();
-				}
-		   }
+		}
 			printf("Number of packet received %d \r\n",packet_Received);
 	}
 	while (1)
@@ -108,6 +89,31 @@ int main(void)
 	//	printf("Number of packet received %d \r\n",packet_Received);
 	}
 }
+
+
+void RX_TX_Init(void){
+	COM_InitTypeDef COM_Init = {0};
+	COM_Init.BaudRate= 115200;
+	COM_Init.HwFlowCtl = COM_HWCONTROL_NONE;
+	COM_Init.WordLength = COM_WORDLENGTH_8B;
+	COM_Init.Parity = COM_PARITY_NONE;
+	COM_Init.StopBits = COM_STOPBITS_1;
+	BSP_COM_Init(COM1, &COM_Init);
+	UTIL_LPM_Init();
+	/* USER CODE BEGIN APPE_Init_2 */
+	BSP_LED_Init(LD2);
+	BSP_LED_Init(LD3);
+	/* Init SW2 User Button */
+	BSP_PB_Init(B2, BUTTON_MODE_GPIO); // if needed
+	/* Payload length config */
+	HAL_MRSubG_PktBasicSetPayloadLength(15);
+	/* Set Manchester Coding Type */
+	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
+	/* Set TX Mode to Normal Mode*/
+	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
+	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
+}
+
 
 // TX SETUP ----------------------------------------------------------------------------------------------
 static void MX_MRSUBG_Init(void)
@@ -160,7 +166,7 @@ void CreateLPAWURFrameV2(uint8_t j,uint8_t aRandom16bit) {
 
 static void RandomNumbersGeneration(uint8_t j)
 {
-	aRandom16bit[0] = 5;
+	aRandom16bit[0] = ID;  //chnage this for id
 	CreateLPAWURFrameV2(j,aRandom16bit[0]);
 	HAL_Delay(1000);
 	MX_APPE_Process();
@@ -209,30 +215,33 @@ static void MX_LPAWUR_Init(void)
 	HAL_LPAWUR_FrameInit(&LPAWUR_FrameInitStruct);
 	LL_LPAWUR_SetState(ENABLE);
 }
-void UpdateRssiStats(int32_t rssi)
+void UpdateRssiStats(int16_t rssi)
 {
 	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
 	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
-	  printf("Current RSSI: %ld dBm | Min: %ld dBm | Max: %ld dBm\r\n", rssi, rssi_min, rssi_max);
+	  printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);
 }
 void GotoRx(void)
 {
 /* Wakeup source configuration */
  HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
  uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
+ uint8_t compareID = 0;
  /* Wakeup on LPAWUR Frame Valid */
  if (wakeupSource & PWR_WAKEUP_LPAWUR)
  {
 	BSP_LED_On(LD2);
 	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
+	rssi = HAL_MRSubG_GetRssidBm();
+	UpdateRssiStats(rssi);
 	printf("LPAWUR data received: [ ");
 	for(uint8_t i=0;i<PAYLOAD_LEN;i++)
 	{
 	  printf("%x",LPAWUR_Payload[i]);
-	  checkForID = LPAWUR_Payload[i];
+	  compareID = LPAWUR_Payload[i];
 	}
 	printf(" ]\n\r");
-	if (checkForID == 1){
+	if (compareID == checkForID){
 		packet_Received++;
 	}
 	HAL_LPAWUR_ClearStatus();
@@ -253,10 +262,12 @@ static PowerSaveLevels App_PowerSaveLevel_Check(void)
 	return output_level;
 }
 #endif
+
 __weak PowerSaveLevels HAL_MRSUBG_TIMER_PowerSaveLevelCheck()
 {
 return POWER_SAVE_LEVEL_DEEPSTOP_TIMER;
 }
+
 void MX_APPE_Idle(void)
 {
 #if (CFG_LPM_SUPPORTED == 1)
@@ -331,36 +342,24 @@ void PeriphCommonClock_Config(void)
 
 static void MX_GPIO_Init(void)
 {
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
-/* GPIO Ports Clock Enable */
-__HAL_RCC_GPIOA_CLK_ENABLE();
-__HAL_RCC_GPIOB_CLK_ENABLE();
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	__HAL_RCC_GPIOB_CLK_ENABLE();
 }
+
 void Error_Handler(void)
 {
-/* USER CODE BEGIN Error_Handler_Debug */
-/* User can add his own implementation to report the HAL error return state */
-while(1)
-{
+	BSP_LED_Init(LD1);
+	while(1)
+	{
+		BSP_LED_On(LD1);
+	}
+
 }
-/* USER CODE END Error_Handler_Debug */
-}
+
 #ifdef  USE_FULL_ASSERT
-/**
-* @brief  Reports the name of the source file and the source line number
-*         where the assert_param error has occurred.
-* @param  file: pointer to the source file name
-* @param  line: assert_param error line source number
-* @retval None
-*/
+
 void assert_failed(uint8_t *file, uint32_t line)
 {
-/* USER CODE BEGIN 6 */
-/* User can add his own implementation to report the file name and line number,
-   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-/* USER CODE END 6 */
+
 }
 #endif /* USE_FULL_ASSERT */
