@@ -8,12 +8,12 @@
 uint8_t vectcTxBuffV2[15];
 uint8_t LPAWUR_Payload[8];
 
-uint8_t mode = 0; // Rx = 1 , Tx = 0
+uint8_t mode = 1; // RX = 1 , TX = 0
 uint8_t packet_Received = 0;
-uint8_t ID = 1;
-uint8_t checkForID = 5;
+uint8_t ID = 5;
+uint8_t checkForID = 3;
+uint8_t jumpNode = 0; // original sender if jump needed
 
-uint8_t aRandom16bit[100];
 uint8_t LPAWUR_Payload[8];
 int16_t rssi = 0;
 int16_t  rssi_min = 0 ;
@@ -30,7 +30,7 @@ void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_MRSUBG_Init(void);
 static void RandomNumbersGeneration(uint8_t j);
-void CreateLPAWURFrameV2(uint8_t j,uint8_t aRandom16bit);
+void CreateLPAWURFrameV2(uint8_t j);
 void EvaluateCrc(uint8_t * LPAWUR_payload);
 void UTIL_LPM_EnterLowPower(void);
 void UTIL_LPM_Init(void);
@@ -40,7 +40,6 @@ void GotoRx(void);
 void MX_APPE_Idle(void);
 static void MX_LPAWUR_Init(void);
 void UTIL_LPM_Init( void );
-
 /*----------------------------------------------------------------------------*/
 
 int main(void)
@@ -90,7 +89,6 @@ int main(void)
 	}
 }
 
-
 void RX_TX_Init(void){
 	COM_InitTypeDef COM_Init = {0};
 	COM_Init.BaudRate= 115200;
@@ -100,16 +98,12 @@ void RX_TX_Init(void){
 	COM_Init.StopBits = COM_STOPBITS_1;
 	BSP_COM_Init(COM1, &COM_Init);
 	UTIL_LPM_Init();
-	/* USER CODE BEGIN APPE_Init_2 */
+	BSP_LED_Init(LD1);
 	BSP_LED_Init(LD2);
 	BSP_LED_Init(LD3);
-	/* Init SW2 User Button */
 	BSP_PB_Init(B2, BUTTON_MODE_GPIO); // if needed
-	/* Payload length config */
 	HAL_MRSubG_PktBasicSetPayloadLength(15);
-	/* Set Manchester Coding Type */
 	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
-	/* Set TX Mode to Normal Mode*/
 	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
 	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
 }
@@ -144,30 +138,29 @@ static void MX_MRSUBG_Init(void)
 	HAL_MRSubG_PacketBasicInit(&MRSUBG_PacketSettingsStruct);
 }
 
-void CreateLPAWURFrameV2(uint8_t j,uint8_t aRandom16bit) {
+void CreateLPAWURFrameV2(uint8_t j) {
 	/* bit sync */
 	for(int i = 0; i<5; i++)
 	  vectcTxBuffV2[i] = 0x00;
 	/* Frame sync */
 	vectcTxBuffV2[5] = 0x99;
-	/* Payload */
-	vectcTxBuffV2[6] = j;
-	vectcTxBuffV2[7] = 0x00;
-	vectcTxBuffV2[8] = 0x00;
+	/* PAYLOAD */
+	vectcTxBuffV2[6] = ID; //ID sender
+	vectcTxBuffV2[7] = checkForID; // ID receiver target
+	vectcTxBuffV2[8] = jumpNode; // Node jump
 	vectcTxBuffV2[9] = 0x00;
 	vectcTxBuffV2[10] = 0x00;
 	vectcTxBuffV2[11] = 0x00;
-	vectcTxBuffV2[12] = aRandom16bit;
-	printf("%d ",vectcTxBuffV2[6]);
-	printf("%d \r\n",vectcTxBuffV2[12]);
+	vectcTxBuffV2[12] = j; //packet number
+//	printf("%d ",vectcTxBuffV2[6]);
+//	printf("%d \r\n",vectcTxBuffV2[12]);
 	/* CRC */
 	EvaluateCrc(&vectcTxBuffV2[6]);
 }
 
 static void RandomNumbersGeneration(uint8_t j)
 {
-	aRandom16bit[0] = ID;  //chnage this for id
-	CreateLPAWURFrameV2(j,aRandom16bit[0]);
+	CreateLPAWURFrameV2(j);
 	HAL_Delay(1000);
 	MX_APPE_Process();
 }
@@ -215,11 +208,12 @@ static void MX_LPAWUR_Init(void)
 	HAL_LPAWUR_FrameInit(&LPAWUR_FrameInitStruct);
 	LL_LPAWUR_SetState(ENABLE);
 }
-void UpdateRssiStats(int16_t rssi)
+void UpdateRssiStats(int16_t rssi, int print_stats)
 {
 	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
 	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
-	  printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);
+	  if (print_stats == 1)
+	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
 }
 void GotoRx(void)
 {
@@ -227,18 +221,26 @@ void GotoRx(void)
  HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
  uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
  uint8_t compareID = 0;
+
  /* Wakeup on LPAWUR Frame Valid */
  if (wakeupSource & PWR_WAKEUP_LPAWUR)
  {
 	BSP_LED_On(LD2);
 	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
 	rssi = HAL_MRSubG_GetRssidBm();
-	UpdateRssiStats(rssi);
+	UpdateRssiStats(rssi,1);
+	if (ID == LPAWUR_Payload[1]){
+		  printf("My packet NGL\r\n");
+	}
 	printf("LPAWUR data received: [ ");
+
 	for(uint8_t i=0;i<PAYLOAD_LEN;i++)
 	{
+	  if (i == 0){
+		  jumpNode = LPAWUR_Payload[i];
+		  compareID = LPAWUR_Payload[i];
+	  }
 	  printf("%x",LPAWUR_Payload[i]);
-	  compareID = LPAWUR_Payload[i];
 	}
 	printf(" ]\n\r");
 	if (compareID == checkForID){
@@ -248,7 +250,7 @@ void GotoRx(void)
 	LL_LPAWUR_SetState(ENABLE);
 	printf("Changing to TX \r\n");
 	mode = 0;
-	HAL_Delay(500);
+	HAL_Delay(1000);
 	BSP_LED_Off(LD2);
  }
 }
@@ -348,12 +350,10 @@ static void MX_GPIO_Init(void)
 
 void Error_Handler(void)
 {
-	BSP_LED_Init(LD1);
 	while(1)
 	{
 		BSP_LED_On(LD1);
 	}
-
 }
 
 #ifdef  USE_FULL_ASSERT
