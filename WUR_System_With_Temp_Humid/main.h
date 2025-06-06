@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 /* Includes ------------------------------------------------------------------*/
+#include "transmission.h"
 #include "stm32wl3x_hal.h"
 #include "stm32wl3x_ll_bus.h"
 #include "stm32wl3x_ll_cortex.h"
@@ -17,14 +18,6 @@ extern "C" {
 #include "stm32wl3x_ll_usart.h"
 #include "stm32wl3x_ll_lpawur.h"
 #include "stm32wl3x_nucleo.h"
-#include<stdio.h>
-#include "math.h"
-
-
-#include "app_conf.h"
-#include "crc_4wkup_rf.h"
-#include "stm32_lpm.h"
-#include "temphumid.h"
 /* Private includes ----------------------------------------------------------*/
 
 void Error_Handler(void);
