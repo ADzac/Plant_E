@@ -1,28 +1,13 @@
 #include "main.h"
 
-/*----------------------------------------------------------------------------*/
-#define MSG_SIZE
-#define PAYLOAD_LEN 7
-#define MIN(a,b)                        (((a) < (b))? (a) : (b))
-
 uint8_t vectcTxBuffV2[15];
-uint8_t LPAWUR_Payload[8];
 
-uint8_t mode = 0; // RX = 1 , TX = 0
+uint8_t mode = 1; // RX = 1 , TX = 0
 uint8_t packet_Received = 0;
-uint8_t ID = 1;
-uint8_t checkForID = 5;
-uint8_t jumpNode = 0; // original sender if jump needed
 
-uint8_t LPAWUR_Payload[8];
-int16_t rssi = 0;
-int16_t  rssi_min = 0 ;
-int16_t rssi_max = -150 ;
-
-float datas[2];
-
-float temperature = 0;
+float temperature=0;
 float humidity = 0;
+
 
 SMRSubGConfig MRSUBG_RadioInitStruct;
 MRSubG_PcktBasicFields MRSUBG_PacketSettingsStruct;
@@ -32,21 +17,14 @@ SLPAWUR_FrameInit LPAWUR_FrameInitStruct;
 /*----------------------------------------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
-static void MX_GPIO_Init(void);
 static void MX_MRSUBG_Init(void);
-static void RandomNumbersGeneration(uint8_t j);
-void CreateLPAWURFrameV2(uint8_t j);
-void EvaluateCrc(uint8_t * LPAWUR_payload);
+static void MX_GPIO_Init(void);
 void UTIL_LPM_EnterLowPower(void);
 void UTIL_LPM_Init(void);
 void RX_TX_Init(void);
-void MX_APPE_Process(void);
-void GotoRx(void);
-void MX_APPE_Idle(void);
 static void MX_LPAWUR_Init(void);
 void UTIL_LPM_Init( void );
 void MX_I2C2_Init(void);
-void TempANDHumidSensor();
 /*----------------------------------------------------------------------------*/
 
 int main(void)
@@ -62,19 +40,32 @@ int main(void)
 	UTIL_LPM_Init();
 	RX_TX_Init();
 
+
+	Packet myPacket;
+	myPacket.TransmissionType = DISCOVERY;
+	myPacket.ID = 1;
+	myPacket.Destination = 5;
+	myPacket.Temperature = temperature;
+	myPacket.Humidity = humidity;
+	myPacket.Dunno = 0x00;
+
+
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
+
 
 	for (uint16_t j = 0;j<200;j++){
 		 if (mode == 0){
-			RandomNumbersGeneration(j);
+			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
 			mode = 1;
 		}
 		else{
-			GotoRx();
+			GotoRx(&mode,&packet_Received);
+			printf("Mode after receiving %d \r\n",mode);
 			if (mode == 1){
 				MX_APPE_Idle();
 			}
 		}
+
 			printf("Number of packet received %d \r\n",packet_Received);
 	}
 	while (1)
@@ -116,12 +107,10 @@ void RX_TX_Init(void){
 	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
 }
 
-
-// TX SETUP ----------------------------------------------------------------------------------------------
 static void MX_MRSUBG_Init(void)
 {
 	/* Configures the radio parameters */
-	MRSUBG_RadioInitStruct.lFrequencyBase = 868000000;
+	MRSUBG_RadioInitStruct.lFrequencyBase = 865000000;
 	MRSUBG_RadioInitStruct.xModulationSelect = MOD_OOK;
 	MRSUBG_RadioInitStruct.lDatarate = 2000;
 	MRSUBG_RadioInitStruct.lFreqDev = 20000;
@@ -145,50 +134,6 @@ static void MX_MRSUBG_Init(void)
 	MRSUBG_PacketSettingsStruct.SyncPresent = DISABLE;
 	HAL_MRSubG_PacketBasicInit(&MRSUBG_PacketSettingsStruct);
 }
-
-void CreateLPAWURFrameV2(uint8_t j) {
-	/* bit sync */
-	for(int i = 0; i<5; i++)
-	  vectcTxBuffV2[i] = 0x00;
-	/* Frame sync */
-	vectcTxBuffV2[5] = 0x99;
-	/* PAYLOAD */
-	TempANDHumidSensor();
-	vectcTxBuffV2[6] = ID; //ID sender
-	vectcTxBuffV2[7] = checkForID; // ID receiver target
-	vectcTxBuffV2[8] = jumpNode; // Node jump
-	vectcTxBuffV2[9] = (int)round(temperature);
-	vectcTxBuffV2[10] = (int)round(humidity);
-	vectcTxBuffV2[11] = 0x00;
-	vectcTxBuffV2[12] = j; //packet number
-//	printf("%d ",vectcTxBuffV2[6]);
-//	printf("%d \r\n",vectcTxBuffV2[12]);
-	/* CRC */
-	EvaluateCrc(&vectcTxBuffV2[6]);
-}
-
-static void RandomNumbersGeneration(uint8_t j)
-{
-	CreateLPAWURFrameV2(j);
-	HAL_Delay(1000);
-	MX_APPE_Process();
-}
-
-void MX_APPE_Process(void)
-{
-  BSP_LED_On(LD3);
-  __HAL_MRSUBG_STROBE_CMD(CMD_TX);
-  /* Wait for TX done */
-  while((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {};
-  /* Clear the IRQ flag */
-  __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
-  BSP_LED_Off(LD3);
-  LL_LPAWUR_SetState(ENABLE);
-}
-
-//---------------------------------------------------------------------------------------------------
-
-// RX SETUP ----------------------------------------------------------------------------------------------
 
 static void MX_LPAWUR_Init(void)
 {
@@ -217,135 +162,6 @@ static void MX_LPAWUR_Init(void)
 	HAL_LPAWUR_FrameInit(&LPAWUR_FrameInitStruct);
 	LL_LPAWUR_SetState(ENABLE);
 }
-void UpdateRssiStats(int16_t rssi, int print_stats)
-{
-	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
-	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
-	  if (print_stats == 1)
-	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
-}
-void GotoRx(void)
-{
-/* Wakeup source configuration */
- HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
- uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
- uint8_t compareID = 0;
-
- /* Wakeup on LPAWUR Frame Valid */
- if (wakeupSource & PWR_WAKEUP_LPAWUR)
- {
-	BSP_LED_On(LD2);
-	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
-	rssi = HAL_MRSubG_GetRssidBm();
-	UpdateRssiStats(rssi,1);
-	if (ID == LPAWUR_Payload[1]){
-		  printf("My packet NGL\r\n");
-	}
-	printf("LPAWUR data received: [ ");
-
-	for(uint8_t i=0;i<PAYLOAD_LEN;i++)
-	{
-	  if (i == 0){
-		  jumpNode = LPAWUR_Payload[i];
-		  compareID = LPAWUR_Payload[i];
-	  }
-	  if (i == 3){
-		  temperature = LPAWUR_Payload[i];
-	  }
-	  if (i == 4){
-		  humidity = LPAWUR_Payload[i];
-	  }
-	  printf("%x",LPAWUR_Payload[i]);
-	}
-	printf(" ]\n\r");
-	if (compareID == checkForID){
-		packet_Received++;
-	}
-	printf("Temperature: %.2f°C, Humidity: %.2f \n\r", temperature, humidity);
-
-	HAL_LPAWUR_ClearStatus();
-	LL_LPAWUR_SetState(ENABLE);
-	printf("Changing to TX \r\n");
-	mode = 0;
-	HAL_Delay(1000);
-	BSP_LED_Off(LD2);
- }
-}
-/* USER CODE END MX_APPE_Process_2 */
-#if (CFG_LPM_SUPPORTED == 1)
-static PowerSaveLevels App_PowerSaveLevel_Check(void)
-{
-	PowerSaveLevels output_level = POWER_SAVE_LEVEL_DEEPSTOP_NOTIMER;
-	/* USER CODE BEGIN App_PowerSaveLevel_Check_1 */
-	/* USER CODE END App_PowerSaveLevel_Check_1 */
-	return output_level;
-}
-#endif
-
-__weak PowerSaveLevels HAL_MRSUBG_TIMER_PowerSaveLevelCheck()
-{
-return POWER_SAVE_LEVEL_DEEPSTOP_TIMER;
-}
-
-void MX_APPE_Idle(void)
-{
-#if (CFG_LPM_SUPPORTED == 1)
-PowerSaveLevels app_powerSave_level, vtimer_powerSave_level, final_level;
-app_powerSave_level = App_PowerSaveLevel_Check();
-if(app_powerSave_level != POWER_SAVE_LEVEL_DISABLED)
-{
-  vtimer_powerSave_level = HAL_MRSUBG_TIMER_PowerSaveLevelCheck();
-  final_level = (PowerSaveLevels)MIN(vtimer_powerSave_level, app_powerSave_level);
-  switch(final_level)
-  {
-  case POWER_SAVE_LEVEL_DISABLED:
-    /* Not Power Save device is busy */
-    return;
-    break;
-  case POWER_SAVE_LEVEL_SLEEP:
-    UTIL_LPM_SetStopMode(1 << CFG_LPM_APP, UTIL_LPM_DISABLE);
-    UTIL_LPM_SetOffMode(1 << CFG_LPM_APP, UTIL_LPM_DISABLE);
-    break;
-  case POWER_SAVE_LEVEL_DEEPSTOP_TIMER:
-    UTIL_LPM_SetStopMode(1 << CFG_LPM_APP, UTIL_LPM_ENABLE);
-    UTIL_LPM_SetOffMode(1 << CFG_LPM_APP, UTIL_LPM_DISABLE);
-    break;
-  case POWER_SAVE_LEVEL_DEEPSTOP_NOTIMER:
-    UTIL_LPM_SetStopMode(1 << CFG_LPM_APP, UTIL_LPM_ENABLE);
-    UTIL_LPM_SetOffMode(1 << CFG_LPM_APP, UTIL_LPM_ENABLE);
-    break;
-  }
-  UTIL_LPM_EnterLowPower();
-}
-#endif /* CFG_LPM_SUPPORTED */
-}
-
-//---------------------------------------------------------------------------------------------------
-
-
-//------Temp and Humidity----------------------------------------------------------------------------------
-
-void TempANDHumidSensor(){
-	while (Si7021_Init() != HAL_OK) {
-		printf("Failed to initialize Si7021 sensor!\n\r");
-		BSP_LED_On(LED_RED);
-	}
-		printf("Si7021 sensor initialized successfully!\n\r");
-		BSP_LED_On(LED_GREEN);
-	/* -- Read Si7021 sensor data ---- */
-
-	if (Si7021_ReadTempAndHumidity(&temperature, &humidity) == HAL_OK) {
-		printf("Temperature: %.2f°C, Humidity: %.2f \n\r", temperature, humidity);
-		BSP_LED_On(LED_GREEN);
-	} else {
-		printf("Error reading Si7021 sensor!\n\r");
-		BSP_LED_On(LED_RED);
-	}
-}
-
-//---------------------------------------------------------------------------------------------------
-
-
 
 
 void SystemClock_Config(void)
@@ -385,7 +201,7 @@ void PeriphCommonClock_Config(void)
 	}
 }
 
-static void MX_GPIO_Init(void)
+void MX_GPIO_Init(void)
 {
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
