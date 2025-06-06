@@ -18,6 +18,7 @@ extern "C" {
 #include "stm32wl3x_ll_lpawur.h"
 #include "stm32wl3x_nucleo.h"
 #include<stdio.h>
+#include "math.h"
 
 
 #include "app_conf.h"
