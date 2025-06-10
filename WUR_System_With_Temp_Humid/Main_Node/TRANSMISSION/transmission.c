@@ -35,10 +35,10 @@ float humid;
 
 void TempANDHumidSensor(){
 	while (Si7021_Init() != HAL_OK) {
-		printf("Failed to initialize Si7021 sensor!\n\r");
+		//printf("Failed to initialize Si7021 sensor!\n\r");
 		BSP_LED_On(LED_RED);
 	}
-		printf("Si7021 sensor initialized successfully!\n\r");
+		//printf("Si7021 sensor initialized successfully!\n\r");
 		BSP_LED_On(LED_GREEN);
 		HAL_Delay(100);
 		BSP_LED_Off(LED_GREEN);
@@ -69,7 +69,6 @@ void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
 
 	uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
 
-	printf("Schedule set \r\n");
 	if (wakeupSource & PWR_WAKEUP_RTC){
 		CreateLPAWURFrameV2(p,j,vectcTxBuff);
 		HAL_Delay(1000);
@@ -81,6 +80,8 @@ void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
 
 void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
     /* bit sync */
+	printf("Transmission type : %d \r\n",packet->TransmissionType);
+
     for (int i = 0; i < 5; i++)
         vectcTxBuff[i] = 0x00;
 
@@ -141,7 +142,7 @@ void GotoRx(uint8_t* PR)
 	BSP_LED_On(LD2);
 	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
 	rssi = HAL_MRSubG_GetRssidBm();
-	UpdateRssiStats(rssi,1);
+	//UpdateRssiStats(rssi,1);
 	if (ID == LPAWUR_Payload[1]){
 		  printf("My packet NGL\r\n");
 	}
