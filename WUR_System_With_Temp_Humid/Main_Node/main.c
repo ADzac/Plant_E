@@ -6,7 +6,7 @@
 
 #define WAKEUP_TIMEOUT 10000 // 10 seconds
 
-uint8_t wakeup_counter = 0;
+uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY;
 
 uint8_t vectcTxBuffV2[15];
@@ -16,6 +16,8 @@ uint8_t packet_Received = 0;
 
 float temperature=0;
 float humidity = 0;
+
+Packet myPacket;
 
 SMRSubGConfig MRSUBG_RadioInitStruct;
 MRSubG_PcktBasicFields MRSUBG_PacketSettingsStruct;
@@ -35,7 +37,7 @@ void UTIL_LPM_Init( void );
 void MX_I2C2_Init(void);
 void MX_RTC_Init(void);
 void configRTCWakeupTimer(uint32_t timeout);
-void HAL_RTCEx_WakeUpTimerEventCallbackV2(RTC_HandleTypeDef *hrtc);
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc);
 /*----------------------------------------------------------------------------*/
 
 int main(void)
@@ -53,17 +55,17 @@ int main(void)
 	MX_RTC_Init();
 	configRTCWakeupTimer(WAKEUP_TIMEOUT);
 
-	Packet myPacket;
+
 	myPacket.ID = 1;
 	myPacket.Destination = 5;
 	myPacket.Temperature = temperature;
 	myPacket.Humidity = humidity;
 	myPacket.Dunno = 0x00;
+	myPacket.TransmissionType = TYPE;
+
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
-
-	for (uint16_t j = 0;j<200;j++){
-		myPacket.TransmissionType = TYPE;
+	for (uint16_t j = 0;j<26;j++){
 
 		 if (mode == 0){
 			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
@@ -71,7 +73,10 @@ int main(void)
 		}
 		 MX_APPE_Idle();
 
+		 if (j > 25){
 			printf("Number of packet received %d \r\n",packet_Received);
+			printf(" \r\n");
+		 }
 	}
 	while (1)
 	{
@@ -168,27 +173,33 @@ static void MX_LPAWUR_Init(void)
 	LL_LPAWUR_SetState(ENABLE);
 }
 
-void HAL_RTCEx_WakeUpTimerEventCallbackV2(RTC_HandleTypeDef *hrtc)
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 {
+    // Clear the wake-up timer interrupt flag
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
+
     // Every 10 seconds
-    BSP_LED_Toggle(LD2);  // For example
+    BSP_LED_Toggle(LD1);
     TYPE = DATAREQ;
+    myPacket.TransmissionType = TYPE;
     mode = 0;
 
     // Every 240 seconds (24 * 10s)
-    if (wakeup_counter == 0 || wakeup_counter == 24)
+    if (wakeup_counter == 24)  // Only check for 24, not 0
     {
-    	printf("Here \r\n");
-    	TYPE = DISCOVERY;
-        // Do your 240s action here
-        BSP_LED_Toggle(LD3);  // Example: different LED
-        if(wakeup_counter == 24){
-        	wakeup_counter = 0;
-        }
+        printf("Here \r\n");
+        TYPE = DISCOVERY;
+        myPacket.TransmissionType = TYPE;
+        BSP_LED_Toggle(LD3);
+        wakeup_counter = 0;  // Reset counter
+    }
+    else
+    {
+        wakeup_counter++;  // Increment counter
     }
 
+    printf("Counter %d \r\n", wakeup_counter);
 }
-
 void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
