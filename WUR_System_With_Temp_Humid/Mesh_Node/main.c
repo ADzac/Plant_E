@@ -1,5 +1,9 @@
 #include "main.h"
 
+#define DISCOVERY 0
+#define DATAREQ 1
+#define ALERT 2
+
 uint8_t vectcTxBuffV2[15];
 
 uint8_t mode = 1; // RX = 1 , TX = 0
