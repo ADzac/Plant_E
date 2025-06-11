@@ -20,7 +20,6 @@
 #include "crc_4wkup_rf.h"
 #include "stm32_lpm.h"
 #include "temphumid.h"
-#include "schedule.h"
 
 #define DISCOVERY 0
 #define DATAREQUEST 1
@@ -33,6 +32,7 @@ typedef struct {
     float Temperature;
     float Humidity;
     uint8_t Dunno;
+    uint8_t Dunno2;
 } Packet;
 
 void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff);
