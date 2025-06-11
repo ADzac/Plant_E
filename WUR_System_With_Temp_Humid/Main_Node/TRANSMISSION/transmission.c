@@ -64,11 +64,9 @@ void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
 {
 	HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
 
-	/* Configures the Button 2 as interrupt wakeup source */
-	HAL_PWR_EnableWakeUpPin(LL_PWR_WAKEUP_PORTA, PWR_WAKEUP_PIN11, PWR_WUP_FALLEDG);
-
 	uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
 
+	//printf("Schedule set \r\n");
 	if (wakeupSource & PWR_WAKEUP_RTC){
 		CreateLPAWURFrameV2(p,j,vectcTxBuff);
 		HAL_Delay(1000);
@@ -80,8 +78,6 @@ void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
 
 void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
     /* bit sync */
-	printf("Transmission type : %d \r\n",packet->TransmissionType);
-
     for (int i = 0; i < 5; i++)
         vectcTxBuff[i] = 0x00;
 
@@ -129,20 +125,25 @@ void UpdateRssiStats(int16_t rssi, int print_stats)
 	  if (print_stats == 1)
 	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
 }
+
+
 void GotoRx(uint8_t* PR)
 {
 /* Wakeup source configuration */
- HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
- uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
- uint8_t compareID = 0;
+
+ uint8_t compareID = 5;
  printf("Waiting for responses \r\n");
+ LL_LPAWUR_SetState(ENABLE); // Ensure LPAWUR is listening
+
+ HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, 1); // Enable wakeup source
+ uint32_t wakeupSource2 = HAL_PWREx_GetClearInternalWakeUpLine();
  /* Wakeup on LPAWUR Frame Valid */
- if (wakeupSource & PWR_WAKEUP_LPAWUR)
+ if (wakeupSource2 && PWR_WAKEUP_LPAWUR)
  {
 	BSP_LED_On(LD2);
 	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
-	rssi = HAL_MRSubG_GetRssidBm();
-	//UpdateRssiStats(rssi,1);
+//	rssi = HAL_MRSubG_GetRssidBm();
+//	UpdateRssiStats(rssi,1);
 	if (ID == LPAWUR_Payload[1]){
 		  printf("My packet NGL\r\n");
 	}
@@ -170,7 +171,7 @@ void GotoRx(uint8_t* PR)
 
 	HAL_LPAWUR_ClearStatus();
 	LL_LPAWUR_SetState(ENABLE);
-	printf("Changing to TX \r\n");
+	//printf("Changing to TX \r\n");
 	HAL_Delay(1000);
 	BSP_LED_Off(LD2);
  }

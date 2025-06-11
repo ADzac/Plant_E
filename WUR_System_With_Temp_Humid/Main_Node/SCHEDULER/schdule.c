@@ -33,36 +33,44 @@
 /* Private variables ---------------------------------------------------------*/
 RTC_HandleTypeDef hrtc;
 
+/* USER CODE BEGIN PV */
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void configRTCWakeupTimer(uint32_t timeout);
+
 void MX_RTC_Init(void)
 {
-    /* RTC clock enable */
-    __HAL_RCC_RTC_CLK_ENABLE();
+  /* RTC clock enable */
+  __HAL_RCC_RTC_CLK_ENABLE();
 
-    __HAL_RCC_CLEAR_IT(RCC_IT_RTCRSTRELRDY);
-    /* Force RTC peripheral reset */
-    __HAL_RCC_RTC_FORCE_RESET();
-    __HAL_RCC_RTC_RELEASE_RESET();
-    /* Check if RTC Reset Release flag interrupt occurred or not */
-    while(__HAL_RCC_GET_IT(RCC_IT_RTCRSTRELRDY) == 0)
-    {
-    }
-    __HAL_RCC_CLEAR_IT(RCC_IT_RTCRSTRELRDY);
+  __HAL_RCC_CLEAR_IT(RCC_IT_RTCRSTRELRDY);
+  /* Force RTC peripheral reset */
+  __HAL_RCC_RTC_FORCE_RESET();
+  __HAL_RCC_RTC_RELEASE_RESET();
+  /* Check if RTC Reset Release flag interrupt occurred or not */
+  while(__HAL_RCC_GET_IT(RCC_IT_RTCRSTRELRDY) == 0)
+  {
+  }
+  __HAL_RCC_CLEAR_IT(RCC_IT_RTCRSTRELRDY);
 
-    /* Initialize RTC */
-    hrtc.Instance = RTC;
-    hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-    hrtc.Init.AsynchPrediv = 127;    // Changed from 0 to 127
-    hrtc.Init.SynchPrediv = 255;     // Changed from 0 to 255
-    hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-    hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
-    if (HAL_RTC_Init(&hrtc) != HAL_OK)
-    {
-        printf("Error\r\n");
-    }
+  /* Initialize RTC */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 0;
+  hrtc.Init.SynchPrediv = 0;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
-    /* Configure the NVIC for RTC */
-    NVIC_SetPriority(RTC_IRQn, 0);
-    NVIC_EnableIRQ(RTC_IRQn);
+  /* Configure the NVIC for RTC */
+  NVIC_SetPriority(RTC_IRQn, 0);
+  NVIC_EnableIRQ(RTC_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -77,7 +85,7 @@ void configRTCWakeupTimer(uint32_t timeout)
   */
   if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, ((timeout/1000)*2048), RTC_WAKEUPCLOCK_RTCCLK_DIV16) != HAL_OK)
   {
-	  printf("Error\r\n");
+    Error_Handler();
   }
 }
 
