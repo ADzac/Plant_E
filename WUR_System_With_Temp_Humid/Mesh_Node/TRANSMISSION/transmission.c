@@ -25,6 +25,7 @@ int16_t  rssi_min = 0 ;
 int16_t rssi_max = -150 ;
 
 Packet p;
+Packet rxPacket;
 
 float datas[2];
 
@@ -68,7 +69,9 @@ void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
 }
 
 void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
-    /* bit sync */
+
+	ID = packet->ID;
+	/* bit sync */
     for (int i = 0; i < 5; i++)
         vectcTxBuff[i] = 0x00;
 
@@ -80,9 +83,9 @@ void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
     packet->Humidity = humid;
 
     /* Fill Tx buffer with payload */
-    vectcTxBuff[6]  = packet->ID;
-    vectcTxBuff[7]  = packet->Destination;
-    vectcTxBuff[8]  = packet->TransmissionType;
+    vectcTxBuff[6]  = rxPacket.TransmissionType;
+    vectcTxBuff[7]  = packet->ID;
+    vectcTxBuff[8]  = packet->Destination;
     vectcTxBuff[9]  = (uint8_t)round(packet->Temperature);
     vectcTxBuff[10] = (uint8_t)round(packet->Humidity);
     vectcTxBuff[11] = packet->Dunno;
@@ -108,52 +111,90 @@ void MX_APPE_Process(void)
 //---------------------------------------------------------------------------------------------------
 
 // RX SETUP ----------------------------------------------------------------------------------------------
-
-void UpdateRssiStats(int16_t rssi, int print_stats)
+void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet)
 {
-	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
-	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
-	  if (print_stats == 1)
-	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
+    handle_packet->TransmissionType = LPAWUR_Pay[0];
+    handle_packet->ID = LPAWUR_Pay[1];
+    handle_packet->Destination = LPAWUR_Pay[2];
+    handle_packet->Temperature = (float)LPAWUR_Pay[3];
+    handle_packet->Humidity = (float)LPAWUR_Pay[4];
+    handle_packet->Dunno = LPAWUR_Pay[5];
+    handle_packet->Dunno2 = LPAWUR_Pay[6];
 }
+
 void GotoRx(uint8_t* m,uint8_t* PR)
 {
+
 /* Wakeup source configuration */
  HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
  uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
- uint8_t compareID = 0;
 
  /* Wakeup on LPAWUR Frame Valid */
  if (wakeupSource & PWR_WAKEUP_LPAWUR)
  {
 	BSP_LED_On(LD2);
 	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
-	rssi = HAL_MRSubG_GetRssidBm();
-	UpdateRssiStats(rssi,1);
-	if (ID == LPAWUR_Payload[1]){
-		  printf("My packet NGL\r\n");
-	}
-	printf("LPAWUR data received: [ ");
 
-	for(uint8_t i=0;i<PAYLOAD_LEN;i++)
+	//GET packet infos
+	PacketHandler(LPAWUR_Payload,&rxPacket);
+//	rssi = HAL_MRSubG_GetRssidBm();
+//	UpdateRssiStats(rssi,1);
+
+	printf("Trans %d \r\n",rxPacket.TransmissionType);
+	// Check the transmission type
+	switch (rxPacket.TransmissionType)
 	{
-	  if (i == 0){
-		  jumpNode = LPAWUR_Payload[i];
-		  compareID = LPAWUR_Payload[i];
-	  }
-	  if (i == 3){
-		  temp = LPAWUR_Payload[i];
-	  }
-	  if (i == 4){
-		  humid = LPAWUR_Payload[i];
-	  }
-	  printf("%x",LPAWUR_Payload[i]);
+		case DISCOVERY:
+			printf("Transmission Type: DISCOVERY\n\r");
+
+			if (ID == rxPacket.Destination){
+				printf("My packet NGL\r\n");
+
+				printf("LPAWUR data received: [ ");
+				printf("Sender's ID : %x \r\n",rxPacket.ID);
+				printf("Target Destination : %x \r\n",rxPacket.Destination);
+				printf("%x \r\n",rxPacket.Dunno);
+				printf("%x \r\n",rxPacket.Dunno2);
+
+			printf(" ]\n\r");
+			}
+			else{
+				printf("Not mine \r\n");
+			}
+
+			break;
+
+		case DATAREQUEST:
+			printf("Transmission Type: DATAREQ\n\r");
+
+			// Update global temp & humid for printing
+			temp = rxPacket.Temperature;
+			humid = rxPacket.Humidity;
+
+
+			if (ID == rxPacket.Destination){
+				printf("My packet NGL\r\n");
+				printf("LPAWUR data received: [ ");
+				printf("Sender's ID : %x \r\n",rxPacket.ID);
+				printf("Target Destination : %x \r\n",rxPacket.Destination);
+				printf("temp: %.2f°C, humid: %.2f%% \r\n", temp, humid);
+				printf("%x \r\n",rxPacket.Dunno);
+				printf("%x \r\n",rxPacket.Dunno2);
+				printf(" ]\n\r");
+			}
+			else{
+				printf("Not mine \r\n");
+			}
+			break;
+
+		default:
+			printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
+			break;
 	}
-	printf(" ]\n\r");
-	if (compareID == checkForID){
+
+	if (rxPacket.ID == checkForID){
 		(*PR)++;
 	}
-	printf("temp: %.2f°C, humid: %.2f \n\r", temp, humid);
 
 	HAL_LPAWUR_ClearStatus();
 	LL_LPAWUR_SetState(ENABLE);
@@ -212,4 +253,11 @@ if(app_powerSave_level != POWER_SAVE_LEVEL_DISABLED)
 #endif /* CFG_LPM_SUPPORTED */
 }
 
+void UpdateRssiStats(int16_t rssi, int print_stats)
+{
+	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
+	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
+	  if (print_stats == 1)
+	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
+}
 //---------------------------------------------------------------------------------------------------

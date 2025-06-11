@@ -32,6 +32,7 @@ typedef struct {
     float Temperature;
     float Humidity;
     uint8_t Dunno;
+    uint8_t Dunno2;
 } Packet;
 
 void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff);
