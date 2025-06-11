@@ -8,6 +8,7 @@
 
 uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY;
+uint32_t wakeupSource2;
 
 uint8_t vectcTxBuffV2[15];
 
@@ -56,27 +57,35 @@ int main(void)
 	configRTCWakeupTimer(WAKEUP_TIMEOUT);
 
 
-	myPacket.ID = 1;
-	myPacket.Destination = 5;
+	myPacket.ID = 5;
+	myPacket.Destination = 1;
 	myPacket.Temperature = temperature;
 	myPacket.Humidity = humidity;
 	myPacket.Dunno = 0x00;
 	myPacket.TransmissionType = TYPE;
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
+	CreateLPAWURFrameV2(&myPacket,0,vectcTxBuffV2);
+	HAL_Delay(1000);
+	MX_APPE_Process();
+	printf("Packet sent \r\n");
 
 	for (uint16_t j = 0;j<26;j++){
 
 		 if (mode == 0){
+			printf("Kat sini \r\n");
 			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
-			GotoRx(&packet_Received);
+			mode = 1;
 		}
-		 MX_APPE_Idle();
+		 else if (mode == 1){
+			 GotoRx(&packet_Received);
+		 }
 
 		 if (j > 25){
 			printf("Number of packet received %d \r\n",packet_Received);
 			printf(" \r\n");
 		 }
+		 MX_APPE_Idle(); // Enter Stop mode
 	}
 	while (1)
 	{
@@ -170,6 +179,7 @@ static void MX_LPAWUR_Init(void)
 	LPAWUR_FrameInitStruct.KpGain = 6;
 	LPAWUR_FrameInitStruct.KiGain = 10;
 	HAL_LPAWUR_FrameInit(&LPAWUR_FrameInitStruct);
+
 	LL_LPAWUR_SetState(ENABLE);
 }
 
@@ -177,12 +187,6 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 {
     // Clear the wake-up timer interrupt flag
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
-
-    // Every 10 seconds
-    BSP_LED_Toggle(LD1);
-    TYPE = DATAREQ;
-    myPacket.TransmissionType = TYPE;
-    mode = 0;
 
     // Every 240 seconds (24 * 10s)
     if (wakeup_counter == 24)  // Only check for 24, not 0
@@ -193,8 +197,14 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
         BSP_LED_Toggle(LD3);
         wakeup_counter = 0;  // Reset counter
     }
+
     else
     {
+        // Every 10 seconds
+        BSP_LED_Toggle(LD1);
+        TYPE = DATAREQ;
+        myPacket.TransmissionType = TYPE;
+        mode = 0;
         wakeup_counter++;  // Increment counter
     }
 
