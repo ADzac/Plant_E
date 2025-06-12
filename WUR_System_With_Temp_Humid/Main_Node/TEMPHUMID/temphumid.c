@@ -113,7 +113,7 @@ HAL_StatusTypeDef Si7021_ReadTempAndHumidity(float *temperature, float *humidity
   }
 
   // Read temperature from previous humidity measurement (more efficient)
-  uint8_t cmd = SI7021_READ_TEMP_FROM_PREV_RH;
+  uint8_t cmd = SI7021_MEASURE_TEMP_HOLD_MASTER;
   uint8_t data[2];
   uint16_t temp_raw;
 
