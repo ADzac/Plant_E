@@ -45,50 +45,19 @@ int main(void)
 	RX_TX_Init();
 
 
-	Packet myPacket;
-	myPacket.TransmissionType = DISCOVERY;
-	myPacket.ID = 1;
-	myPacket.Destination = 5;
-	myPacket.Temperature = temperature;
-	myPacket.Humidity = humidity;
-	myPacket.Dunno = 0x00;
+//	Packet myPacket;
+
 
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
-
-	for (uint16_t j = 0;j<200;j++){
-		 if (mode == 0){
-			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
-			mode = 1;
-		}
-		else{
-			GotoRx(&mode,&packet_Received);
-			printf("Mode after receiving %d \r\n",mode);
-			if (mode == 1){
-				MX_APPE_Idle();
-			}
-		}
-
-			printf("Number of packet received %d \r\n",packet_Received);
-	}
 	while (1)
 	{
-	//	if (mode == 0){
-	//	RandomNumbersGeneration();
-	//	mode = 1;
-	//
-	//	}
-	//	else{
-	//		GotoRx();
-	//		if (mode == 0){
-	//			packet_Received++;;
-	//		}
-	//		else{
-	//			MX_APPE_Idle();
-	//		}
-	//  }
-	//	printf("Number of packet received %d \r\n",packet_Received);
+		GotoRx(&mode,&packet_Received,&vectcTxBuffV2);
+//		printf("Mode after receiving %d \r\n",mode);
+		printf("Number of packet received %d \r\n",packet_Received);
+
+		MX_APPE_Idle();
 	}
 }
 
