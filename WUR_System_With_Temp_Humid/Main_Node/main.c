@@ -65,15 +65,15 @@ int main(void)
 	myPacket.TransmissionType = TYPE;
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
-	CreateLPAWURFrameV2(&myPacket,0,vectcTxBuffV2);
-	HAL_Delay(1000);
-	MX_APPE_Process();
-	printf("Packet sent \r\n");
+//	CreateLPAWURFrameV2(&myPacket,0,vectcTxBuffV2);
+//	HAL_Delay(1000);
+//	MX_APPE_Process();
+//	printf("Packet sent \r\n");
 
-	for (uint16_t j = 0;j<26;j++){
+	for (uint16_t j = 1;j<26;j++){
 
 		 if (mode == 0){
-			printf("Kat sini \r\n");
+			 printf("babi \r\n");
 			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
 			mode = 1;
 		}
@@ -187,15 +187,16 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 {
     // Clear the wake-up timer interrupt flag
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
+    mode = 0;
 
     // Every 240 seconds (24 * 10s)
     if (wakeup_counter == 24)  // Only check for 24, not 0
     {
-        printf("Here \r\n");
+        //printf("Here \r\n");
         TYPE = DISCOVERY;
         myPacket.TransmissionType = TYPE;
         BSP_LED_Toggle(LD3);
-        wakeup_counter = 0;  // Reset counter
+        wakeup_counter = 1;  // Reset counter
     }
 
     else
@@ -204,11 +205,10 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
         BSP_LED_Toggle(LD1);
         TYPE = DATAREQ;
         myPacket.TransmissionType = TYPE;
-        mode = 0;
-        wakeup_counter++;  // Increment counter
     }
+    wakeup_counter++;
 
-    printf("Counter %d \r\n", wakeup_counter);
+    //printf("Counter %d \r\n", wakeup_counter);
 }
 void SystemClock_Config(void)
 {
