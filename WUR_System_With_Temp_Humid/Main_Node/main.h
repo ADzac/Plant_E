@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 /* Includes ------------------------------------------------------------------*/
-#include "transmission.h"
+#include "transmission_main.h"
 #include "stm32wl3x_hal.h"
 #include "stm32wl3x_ll_bus.h"
 #include "stm32wl3x_ll_cortex.h"
