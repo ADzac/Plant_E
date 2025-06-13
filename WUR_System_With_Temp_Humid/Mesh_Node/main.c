@@ -1,8 +1,5 @@
 #include "main.h"
 
-#define DISCOVERY 0
-#define DATAREQ 1
-#define ALERT 2
 
 uint8_t vectcTxBuffV2[15];
 
@@ -23,7 +20,6 @@ void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_MRSUBG_Init(void);
 static void MX_GPIO_Init(void);
-void UTIL_LPM_EnterLowPower(void);
 void UTIL_LPM_Init(void);
 void RX_TX_Init(void);
 static void MX_LPAWUR_Init(void);
@@ -53,7 +49,7 @@ int main(void)
 
 	while (1)
 	{
-		GotoRx(&mode,&packet_Received,&vectcTxBuffV2);
+		GotoRx(&mode,&packet_Received,vectcTxBuffV2);
 //		printf("Mode after receiving %d \r\n",mode);
 		printf("Number of packet received %d \r\n",packet_Received);
 
