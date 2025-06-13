@@ -1,9 +1,5 @@
 #include "main.h"
 
-#define DISCOVERY 0
-#define DATAREQ 1
-#define ALERT 2
-
 #define WAKEUP_TIMEOUT 10000 // 10 seconds
 
 uint8_t wakeup_counter = 24;
@@ -203,7 +199,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     {
         // Every 10 seconds
         BSP_LED_Toggle(LD1);
-        TYPE = DATAREQ;
+        TYPE = DATAREQUEST;
         myPacket.TransmissionType = TYPE;
     }
     wakeup_counter++;
