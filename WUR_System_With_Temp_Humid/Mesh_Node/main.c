@@ -49,7 +49,7 @@ int main(void)
 
 	while (1)
 	{
-		GotoRx(&mode,&packet_Received,vectcTxBuffV2);
+		GotoRx(&packet_Received,vectcTxBuffV2);
 //		printf("Mode after receiving %d \r\n",mode);
 		printf("Number of packet received %d \r\n",packet_Received);
 
