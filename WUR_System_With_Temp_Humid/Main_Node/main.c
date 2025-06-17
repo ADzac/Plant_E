@@ -59,41 +59,16 @@ int main(void)
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
-
-	for (uint16_t j = 1;j<26;j++){
-
-		 if (mode == 0){
-			 printf("babi \r\n");
-			RandomNumbersGeneration(&myPacket,j,vectcTxBuffV2);
-			mode = 1;
-		}
-		 else if (mode == 1){
-			 GotoRx(&packet_Received);
-		 }
-
-		 if (j > 25){
-			printf("Number of packet received %d \r\n",packet_Received);
-			printf(" \r\n");
-		 }
-		 MX_APPE_Idle(); // Enter Stop mode
-	}
 	while (1)
 	{
-	//	if (mode == 0){
-	//	RandomNumbersGeneration();
-	//	mode = 1;
-	//
-	//	}
-	//	else{
-	//		GotoRx();
-	//		if (mode == 0){
-	//			packet_Received++;;
-	//		}
-	//		else{
-	//			MX_APPE_Idle();
-	//		}
-	//  }
-	//	printf("Number of packet received %d \r\n",packet_Received);
+		 if (mode == 0){
+			RandomNumbersGeneration(&myPacket,1,vectcTxBuffV2);
+			mode = 1;
+		}
+
+		 GotoRx(&packet_Received);
+//		 HAL_Delay(5000);
+		 MX_APPE_Idle(); // Enter Stop mode
 	}
 }
 
