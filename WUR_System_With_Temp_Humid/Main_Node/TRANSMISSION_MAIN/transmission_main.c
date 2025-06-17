@@ -33,6 +33,7 @@ float datas[2];
 float temp = 0;
 float humid = 0;
 
+uint8_t nextAvailableID = 1;
 //------Temp and humid----------------------------------------------------------------------------------
 
 void TempANDHumidSensor(){
@@ -59,7 +60,71 @@ void TempANDHumidSensor(){
 
 //---------------------------------------------------------------------------------------------------
 
+void GETUID(uint8_t *uid) {
+    uint32_t uid0 = LL_GetUID_Word0();
+    uint32_t uid1 = LL_GetUID_Word1();
 
+    // Example: use last byte of UID2 and 3 bytes of UID0 for uniqueness
+    uid[0] = (uid0 >> 24) & 0xFF;
+    uid[1] = (uid0 >> 16) & 0xFF;
+    uid[2] = (uid1 >> 8) & 0xFF;
+    uid[3] = (uid1 >> 0) & 0xFF;
+
+    // Optional: print for debugging
+    printf("UID = %02X %02X %02X %02X\r\n", uid[0], uid[1], uid[2], uid[3]);
+}
+
+uint8_t isSameNode(NodeEntry *node, Packet *rx) {
+    return (node->temp == rx->Temperature &&
+            node->hum == rx->Humidity &&
+            node->add == rx->ADD &&
+            node->id_assign == rx->ID_Assign);
+}
+
+//uint8_t GetOrAssignID(Packet *rx) {
+//    for (uint8_t i = 0; i < nodeCount; i++) {
+//        if (isSameNode(&knownNodes[i], rx)) {
+//            return knownNodes[i].assignedID;  // Already assigned
+//        }
+//    }
+//
+//    // Not found → assign new ID
+//    if (nodeCount < MAX_NODES) {
+//        knownNodes[nodeCount].temp = rx->Temperature;
+//        knownNodes[nodeCount].hum = rx->Humidity;
+//        knownNodes[nodeCount].add = rx->ADD;
+//        knownNodes[nodeCount].id_assign = rx->ID_Assign;
+//        knownNodes[nodeCount].assignedID = nodeCount + 1;
+//        nodeCount++;
+//        return knownNodes[nodeCount - 1].assignedID;
+//    }
+//
+//    return 0xFF; // Error: too many nodes
+//}
+
+
+void DiscoveryPhaseHandler(uint8_t ID) {
+
+	printf("Discovery request from unassigned node\n\r");
+
+
+
+	txPacket.TransmissionType = ID_ASSIGNMENT;
+	txPacket.ID = MAIN_NODE_ID;
+	txPacket.Destination = rxPacket.Temperature;  // Broadcast
+	txPacket.Temperature = rxPacket.Humidity;  // Broadcast
+	txPacket.Humidity = rxPacket.ADD;  // Broadcast
+	txPacket.ADD = rxPacket.ID_Assign;  // Broadcast
+	txPacket.ID_Assign = ID;  // Using Dunno field to carry new ID
+
+	// Send the assignment
+	CreateLPAWURFrameV2(&txPacket, 0, vectcTxBuff);
+	HAL_Delay(1000);
+	MX_APPE_Process();
+
+	printf("Assigned ID %d to new node\n\r", nextAvailableID);
+	MX_APPE_Idle();
+}
 // TX SETUP ----------------------------------------------------------------------------------------------
 
 void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
@@ -86,6 +151,12 @@ void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
 
     /* Frame sync */
     vectcTxBuff[5] = 0x99;
+
+//    if (packet->TransmissionType == DATAREQUEST){
+//		TempANDHumidSensor();
+//		packet->Temperature = temp;
+//		packet->Humidity = humid;
+//    }
 
     /* Fill Tx buffer with payload */
     vectcTxBuff[6]  = packet->TransmissionType;
@@ -144,28 +215,14 @@ void GotoRx(uint8_t* PR)
 
 	//GET packet infos
 	PacketHandler(LPAWUR_Payload,&rxPacket);
- //	rssi = HAL_MRSubG_GetRssidBm();
- //	UpdateRssiStats(rssi,1);
+
 
 	// Check the transmission type
 	switch (rxPacket.TransmissionType)
 	{
 		case DISCOVERY_RESP:
 			printf("Transmission Type: DISCOVERY\n\r");
-
-			if (ID == rxPacket.Destination){
-				printf("LPAWUR data received: [ ");
-				printf("Sender's ID : %x ,",rxPacket.ID);
-				printf("Target Destination : %x ,",rxPacket.Destination);
-//				printf("%x ,",rxPacket.Dunno);
-//				printf("%x",rxPacket.Dunno2);
-
-			printf(" ]\n\r");
-			}
-			else{
-				printf("Not mine \r\n");
-			}
-
+			DiscoveryPhaseHandler(nextAvailableID);
 			break;
 
 		case DATAREP:
@@ -180,6 +237,8 @@ void GotoRx(uint8_t* PR)
 			printf("Sender's ID : %x ,",rxPacket.ID);
 			printf("Target Destination : %x ,",rxPacket.Destination);
 			printf("temp: %.2f°C, humid: %.2f%% ,", temp, humid);
+			printf(" ]\n\r");
+
 			break;
 
 		default:
