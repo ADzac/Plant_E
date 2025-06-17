@@ -73,5 +73,6 @@ void AssignID(uint8_t newID);
 
 extern Packet txPacket;
 extern Packet rxPacket;
+extern uint8_t vectcTxBuff[15];
 
 #endif
