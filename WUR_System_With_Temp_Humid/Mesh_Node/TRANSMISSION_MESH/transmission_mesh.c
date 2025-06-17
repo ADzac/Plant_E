@@ -34,6 +34,7 @@ float datas[2];
 float temp = 0;
 float humid = 0;
 
+uint8_t myID = UNASSIGNED_ID;
 uint8_t UID[3];
 //------Temp and humid----------------------------------------------------------------------------------
 
@@ -171,6 +172,7 @@ void GotoRx(uint8_t* PR,uint8_t* vectcTxBuff)
 			temp = rxPacket.Temperature;
 			humid = rxPacket.Humidity;
 			txPacket.TransmissionType = DATAREP;
+			txPacket.ID = myID;
 
 			printf("My packet NGL\r\n");
 			printf("LPAWUR data received: [ ");
@@ -178,7 +180,9 @@ void GotoRx(uint8_t* PR,uint8_t* vectcTxBuff)
 			printf("Target Destination : %x ,",rxPacket.Destination);
 
 			break;
-
+		case ID_ASSIGNMENT:
+			myID = rxPacket.ID_Assign;
+			printf("Id received. My new ID is %d \r\n",myID);
 		default:
 			printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
 			break;
