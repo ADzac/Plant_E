@@ -62,7 +62,7 @@ int main(void)
 	while (1)
 	{
 		 if (mode == 0){
-			RandomNumbersGeneration(&myPacket,1,vectcTxBuffV2);
+			RandomNumbersGeneration(&myPacket,1,vectcTxBuff);
 			mode = 1;
 		}
 
@@ -88,7 +88,7 @@ void RX_TX_Init(void){
 	HAL_MRSubG_PktBasicSetPayloadLength(15);
 	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
 	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
-	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
+	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuff);
 }
 
 static void MX_MRSUBG_Init(void)
