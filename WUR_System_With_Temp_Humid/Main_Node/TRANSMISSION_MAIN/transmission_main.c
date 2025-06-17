@@ -119,7 +119,7 @@ void DiscoveryPhaseHandler(uint8_t ID) {
 
 	// Send the assignment
 	CreateLPAWURFrameV2(&txPacket, 0, vectcTxBuff);
-	HAL_Delay(1000);
+	HAL_Delay(100);
 	MX_APPE_Process();
 
 	printf("Assigned ID %d to new node\n\r", nextAvailableID);
