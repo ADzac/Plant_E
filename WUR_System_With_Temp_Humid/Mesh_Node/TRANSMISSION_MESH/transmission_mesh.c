@@ -1,3 +1,4 @@
+
 /*
  * txrx.c
  *
@@ -33,6 +34,7 @@ float datas[2];
 float temp = 0;
 float humid = 0;
 
+uint8_t UID[3];
 //------Temp and humid----------------------------------------------------------------------------------
 
 void TempANDHumidSensor(){
@@ -70,12 +72,6 @@ void RandomNumbersGeneration(uint8_t j,uint8_t* vectcTxBuff)
 
 void CreateLPAWURFrameV2(uint8_t j, uint8_t* vectcTxBuff) {
 
-	txPacket.ID = 3;
-	txPacket.Destination = 5;
-
-	txPacket.Dunno = 0x00;
-
-	ID = txPacket.ID;
 	/* bit sync */
     for (int i = 0; i < 5; i++)
         vectcTxBuff[i] = 0x00;
@@ -83,20 +79,20 @@ void CreateLPAWURFrameV2(uint8_t j, uint8_t* vectcTxBuff) {
     /* Frame sync */
     vectcTxBuff[5] = 0x99;
 
-    if (rxPacket.TransmissionType == DATAREQUEST){
+    if (rxPacket.TransmissionType == DATAREQ){
 		TempANDHumidSensor();
 		txPacket.Temperature = temp;
 		txPacket.Humidity = humid;
     }
 
     /* Fill Tx buffer with payload */
-    vectcTxBuff[6]  = rxPacket.TransmissionType;
+    vectcTxBuff[6]  = txPacket.TransmissionType;
     vectcTxBuff[7]  = txPacket.ID;
     vectcTxBuff[8]  = txPacket.Destination;
     vectcTxBuff[9]  = (uint8_t)round(txPacket.Temperature);
     vectcTxBuff[10] = (uint8_t)round(txPacket.Humidity);
-    vectcTxBuff[11] = txPacket.Dunno ;
-    vectcTxBuff[12] = j;
+    vectcTxBuff[11] = txPacket.ADD;
+    vectcTxBuff[12] = txPacket.ID_Assign;
 
     /* CRC */
     EvaluateCrc(&vectcTxBuff[6]);
@@ -125,11 +121,11 @@ void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet)
     handle_packet->Destination = LPAWUR_Pay[2];
     handle_packet->Temperature = (float)LPAWUR_Pay[3];
     handle_packet->Humidity = (float)LPAWUR_Pay[4];
-    handle_packet->Dunno = LPAWUR_Pay[5];
-    handle_packet->Dunno2 = LPAWUR_Pay[6];
+    handle_packet->ADD = LPAWUR_Pay[5];
+    handle_packet->ID_Assign = LPAWUR_Pay[6];
 }
 
-void GotoRx(uint8_t* m,uint8_t* PR,uint8_t* vectcTxBuff)
+void GotoRx(uint8_t* PR,uint8_t* vectcTxBuff)
 {
 
 /* Wakeup source configuration */
@@ -150,45 +146,37 @@ void GotoRx(uint8_t* m,uint8_t* PR,uint8_t* vectcTxBuff)
 	// Check the transmission type
 	switch (rxPacket.TransmissionType)
 	{
-		case DISCOVERY:
+		case DISCOVERY_REQ:
 			printf("Transmission Type: DISCOVERY\n\r");
 
-			if (ID == rxPacket.Destination){
-				printf("LPAWUR data received: [ ");
-				printf("Sender's ID : %x ,",rxPacket.ID);
-				printf("Target Destination : %x ,",rxPacket.Destination);
-//				printf("%x ,",rxPacket.Dunno);
-//				printf("%x",rxPacket.Dunno2);
+			printf("LPAWUR data received: [ ");
+			printf("Sender's ID : %x ,",rxPacket.ID);
+			printf("Target Destination : %x ,",rxPacket.Destination);
 
-			printf(" ]\n\r");
-			}
-			else{
-				printf("Not mine \r\n");
-			}
+
+			txPacket.TransmissionType = DISCOVERY_RESP;
+			txPacket.Destination = MAIN_NODE_ID;
+			txPacket.ID = UNASSIGNED_ID;
+			txPacket.Temperature = UID[0];
+			txPacket.Humidity = UID[1];
+			txPacket.ADD = UID[2];
+			txPacket.ID_Assign = UID[3];
 
 			break;
 
-		case DATAREQUEST:
+		case DATAREQ:
 			printf("Transmission Type: DATAREQ\n\r");
 
 			// Update global temp & humid for printing
 			temp = rxPacket.Temperature;
 			humid = rxPacket.Humidity;
+			txPacket.TransmissionType = DATAREP;
 
+			printf("My packet NGL\r\n");
+			printf("LPAWUR data received: [ ");
+			printf("Sender's ID : %x ,",rxPacket.ID);
+			printf("Target Destination : %x ,",rxPacket.Destination);
 
-			if (ID == rxPacket.Destination){
-				printf("My packet NGL\r\n");
-				printf("LPAWUR data received: [ ");
-				printf("Sender's ID : %x ,",rxPacket.ID);
-				printf("Target Destination : %x ,",rxPacket.Destination);
-//				printf("temp: %.2f°C, humid: %.2f%% ,", temp, humid);
-//				printf("%x ,",rxPacket.Dunno);
-//				printf("%x",rxPacket.Dunno2);
-				printf(" ]\n\r");
-			}
-			else{
-				printf("Not mine \r\n");
-			}
 			break;
 
 		default:
@@ -200,13 +188,10 @@ void GotoRx(uint8_t* m,uint8_t* PR,uint8_t* vectcTxBuff)
 		(*PR)++;
 	}
 
-
-	printf("Changing to TX \r\n");
-	*m = 0;
 	RandomNumbersGeneration(10,vectcTxBuff);
 	HAL_LPAWUR_ClearStatus();
 	LL_LPAWUR_SetState(ENABLE);
-	HAL_Delay(1000);
+	HAL_Delay(100);
 	BSP_LED_Off(LD2);
  }
 }
