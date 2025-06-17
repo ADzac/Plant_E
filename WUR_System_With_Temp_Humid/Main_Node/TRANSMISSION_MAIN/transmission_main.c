@@ -25,6 +25,8 @@ int16_t  rssi_min = 0 ;
 int16_t rssi_max = -150 ;
 
 Packet p;
+Packet txPacket;
+Packet rxPacket;
 
 float datas[2];
 
@@ -85,20 +87,14 @@ void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
     /* Frame sync */
     vectcTxBuff[5] = 0x99;
 
-//    if (packet->TransmissionType == DATAREQUEST){
-//		TempANDHumidSensor();
-//		packet->Temperature = temp;
-//		packet->Humidity = humid;
-//    }
-
     /* Fill Tx buffer with payload */
     vectcTxBuff[6]  = packet->TransmissionType;
 	vectcTxBuff[7]  = packet->ID;
 	vectcTxBuff[8]  = packet->Destination;
     vectcTxBuff[9]  = (uint8_t)round(packet->Temperature);
     vectcTxBuff[10] = (uint8_t)round(packet->Humidity);
-    vectcTxBuff[11] = packet->Dunno;
-    vectcTxBuff[12] = j;
+    vectcTxBuff[11] = packet->ADD;
+    vectcTxBuff[12] = packet->ID_Assign;
 
     /* CRC */
     EvaluateCrc(&vectcTxBuff[6]);
@@ -127,8 +123,8 @@ void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet)
     handle_packet->Destination = LPAWUR_Pay[2];
     handle_packet->Temperature = (float)LPAWUR_Pay[3];
     handle_packet->Humidity = (float)LPAWUR_Pay[4];
-    handle_packet->Dunno = LPAWUR_Pay[5];
-    handle_packet->Dunno2 = LPAWUR_Pay[6];
+    handle_packet->ADD = LPAWUR_Pay[5];
+    handle_packet->ID_Assign = LPAWUR_Pay[6];
 }
 
 void GotoRx(uint8_t* PR)
@@ -154,7 +150,7 @@ void GotoRx(uint8_t* PR)
 	// Check the transmission type
 	switch (rxPacket.TransmissionType)
 	{
-		case DISCOVERY:
+		case DISCOVERY_RESP:
 			printf("Transmission Type: DISCOVERY\n\r");
 
 			if (ID == rxPacket.Destination){
@@ -172,27 +168,18 @@ void GotoRx(uint8_t* PR)
 
 			break;
 
-		case DATAREQUEST:
+		case DATAREP:
 			printf("Transmission Type: DATAREQ\n\r");
 
 			// Update global temp & humid for printing
 			temp = rxPacket.Temperature;
 			humid = rxPacket.Humidity;
 
-
-			if (ID == rxPacket.Destination){
-				printf("My packet NGL\r\n");
-				printf("LPAWUR data received: [ ");
-				printf("Sender's ID : %x ,",rxPacket.ID);
-				printf("Target Destination : %x ,",rxPacket.Destination);
-				printf("temp: %.2f°C, humid: %.2f%% ,", temp, humid);
-//				printf("%x ,",rxPacket.Dunno);
-//				printf("%x",rxPacket.Dunno2);
-				printf(" ]\n\r");
-			}
-			else{
-				printf("Not mine \r\n");
-			}
+			printf("My packet NGL\r\n");
+			printf("LPAWUR data received: [ ");
+			printf("Sender's ID : %x ,",rxPacket.ID);
+			printf("Target Destination : %x ,",rxPacket.Destination);
+			printf("temp: %.2f°C, humid: %.2f%% ,", temp, humid);
 			break;
 
 		default:
