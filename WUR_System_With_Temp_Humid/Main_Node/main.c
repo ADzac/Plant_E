@@ -3,7 +3,7 @@
 #define WAKEUP_TIMEOUT 10000 // 10 seconds
 
 uint8_t wakeup_counter = 24;
-uint8_t TYPE = DISCOVERY;
+uint8_t TYPE = DISCOVERY_REQ;
 uint32_t wakeupSource2;
 
 uint8_t vectcTxBuffV2[15];
@@ -53,18 +53,12 @@ int main(void)
 	configRTCWakeupTimer(WAKEUP_TIMEOUT);
 
 
-	myPacket.ID = 5;
-	myPacket.Destination = 1;
-	myPacket.Temperature = temperature;
-	myPacket.Humidity = humidity;
-	myPacket.Dunno = 0x00;
-	myPacket.TransmissionType = TYPE;
+	txPacket.TransmissionType = TYPE;
+	txPacket.ID = MAIN_NODE_ID;
+	txPacket.Destination = UNASSIGNED_ID;
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
-//	CreateLPAWURFrameV2(&myPacket,0,vectcTxBuffV2);
-//	HAL_Delay(1000);
-//	MX_APPE_Process();
-//	printf("Packet sent \r\n");
+
 
 	for (uint16_t j = 1;j<26;j++){
 
@@ -189,7 +183,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     if (wakeup_counter == 24)  // Only check for 24, not 0
     {
         //printf("Here \r\n");
-        TYPE = DISCOVERY;
+        TYPE = DISCOVERY_REQ;
         myPacket.TransmissionType = TYPE;
         BSP_LED_Toggle(LD3);
         wakeup_counter = 1;  // Reset counter
@@ -199,7 +193,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     {
         // Every 10 seconds
         BSP_LED_Toggle(LD1);
-        TYPE = DATAREQUEST;
+        TYPE = DATAREQ;
         myPacket.TransmissionType = TYPE;
     }
     wakeup_counter++;
