@@ -1,6 +1,6 @@
 #include "main.h"
 
-#define WAKEUP_TIMEOUT 10000 // 10 seconds
+#define WAKEUP_TIMEOUT 20000 // 10 seconds
 
 uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY_REQ;
@@ -62,7 +62,7 @@ int main(void)
 	while (1)
 	{
 		 if (mode == 0){
-			RandomNumbersGeneration(&myPacket,1,vectcTxBuff);
+			 SendPacket();
 			mode = 1;
 		}
 
@@ -70,6 +70,34 @@ int main(void)
 //		 HAL_Delay(5000);
 		 MX_APPE_Idle(); // Enter Stop mode
 	}
+}
+
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
+{
+    // Clear the wake-up timer interrupt flag
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
+    mode = 0;
+
+    // Every 240 seconds (24 * 10s)
+    if (wakeup_counter == 24)  // Only check for 24, not 0
+    {
+        //printf("Here \r\n");
+        TYPE = DISCOVERY_REQ;
+        txPacket.TransmissionType = TYPE;
+        BSP_LED_Toggle(LD3);
+        wakeup_counter = 1;  // Reset counter
+    }
+
+    else
+    {
+        // Every 10 seconds
+        BSP_LED_Toggle(LD1);
+        TYPE = DATAREQ;
+        txPacket.TransmissionType = TYPE;
+    }
+    wakeup_counter++;
+
+    //printf("Counter %d \r\n", wakeup_counter);
 }
 
 void RX_TX_Init(void){
@@ -148,33 +176,7 @@ static void MX_LPAWUR_Init(void)
 	LL_LPAWUR_SetState(ENABLE);
 }
 
-void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
-{
-    // Clear the wake-up timer interrupt flag
-    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
-    mode = 0;
 
-    // Every 240 seconds (24 * 10s)
-    if (wakeup_counter == 24)  // Only check for 24, not 0
-    {
-        //printf("Here \r\n");
-        TYPE = DISCOVERY_REQ;
-        myPacket.TransmissionType = TYPE;
-        BSP_LED_Toggle(LD3);
-        wakeup_counter = 1;  // Reset counter
-    }
-
-    else
-    {
-        // Every 10 seconds
-        BSP_LED_Toggle(LD1);
-        TYPE = DATAREQ;
-        myPacket.TransmissionType = TYPE;
-    }
-    wakeup_counter++;
-
-    //printf("Counter %d \r\n", wakeup_counter);
-}
 void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
