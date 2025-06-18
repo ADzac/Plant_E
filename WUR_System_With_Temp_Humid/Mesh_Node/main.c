@@ -39,20 +39,19 @@ int main(void)
 	MX_LPAWUR_Init();
 	UTIL_LPM_Init();
 	RX_TX_Init();
-
+	GETUID(UID); // Ensure UID is populated
 
 //	Packet myPacket;
-
+	for (int i = 0; i < MAX_CACHE; i++) {
+	    packetCache[i].transType = 0xFF; // or set all fields to 0xFF
+	}
 
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
 	while (1)
 	{
-		GotoRx(&packet_Received,vectcTxBuffV2);
-//		printf("Mode after receiving %d \r\n",mode);
-		printf("Number of packet received %d \r\n",packet_Received);
-
+		GotoRx(&packet_Received,vectcTxBuff);
 		MX_APPE_Idle();
 	}
 }
@@ -73,7 +72,7 @@ void RX_TX_Init(void){
 	HAL_MRSubG_PktBasicSetPayloadLength(15);
 	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
 	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
-	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuffV2);
+	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuff);
 }
 
 static void MX_MRSUBG_Init(void)
