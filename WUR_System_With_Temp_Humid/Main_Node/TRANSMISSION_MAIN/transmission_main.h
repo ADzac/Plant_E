@@ -45,30 +45,27 @@ typedef struct {
     uint8_t TransmissionType;
     uint8_t ID;
     uint8_t Destination;
-    uint8_t Temperature;
-    uint8_t Humidity;
-    uint8_t ADD;
-    uint8_t ID_Assign;
+    uint8_t Payload[4];
 } Packet;
 
 typedef struct {
     uint8_t temp;
     uint8_t hum;
-    uint8_t add;
+    uint8_t hopcount;
     uint8_t id_assign;
     uint8_t assignedID;
 } NodeEntry;
 
 #define MAX_NODES 50
 
-void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff);
-void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff);
+void CreateLPAWURFrameV2();
+void SendPacket();
 void MX_APPE_Process(void);
 void UpdateRssiStats(int16_t rssi, int print_stats);
 void GotoRx(uint8_t* PR);
 void MX_APPE_Idle(void);
 void GETUID(uint8_t *uid);
-void DiscoveryPhaseHandler(uint8_t ID);
+void DiscoveryPhaseHandler(Packet* rxPacketptr);
 void AssignID(uint8_t newID);
 
 extern Packet txPacket;

@@ -4,259 +4,196 @@
  *  Created on: Jun 6, 2025
  *      Author: mzakri
  */
+
 #include "transmission_main.h"
 
-#define MSG_SIZE
 #define PAYLOAD_LEN 7
-#define MIN(a,b)                        (((a) < (b))? (a) : (b))
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
 uint8_t vectcTxBuff[15];
 uint8_t LPAWUR_Payload[8];
 
-uint8_t m; // RX = 1 , TX = 0
-uint8_t PR;
 uint8_t ID = 1;
 uint8_t checkForID = 5;
-uint8_t jumpNode = 0; // original sender if jump needed
 
-uint8_t LPAWUR_Payload[8];
 int16_t rssi = 0;
-int16_t  rssi_min = 0 ;
-int16_t rssi_max = -150 ;
+int16_t rssi_min = 0;
+int16_t rssi_max = -150;
 
-Packet p;
 Packet txPacket;
 Packet rxPacket;
-
-float datas[2];
 
 float temp = 0;
 float humid = 0;
 
 uint8_t nextAvailableID = 1;
-//------Temp and humid----------------------------------------------------------------------------------
+NodeEntry knownNodes[MAX_NODES];
+uint8_t nodeCount = 0;
 
-void TempANDHumidSensor(){
-	while (Si7021_Init() != HAL_OK) {
-		//printf("Failed to initialize Si7021 sensor!\n\r");
-		BSP_LED_On(LED_RED);
-	}
-		//printf("Si7021 sensor initialized successfully!\n\r");
-		BSP_LED_On(LED_GREEN);
-		HAL_Delay(100);
-		BSP_LED_Off(LED_GREEN);
-	/* -- Read Si7021 sensor data ---- */
+void TempANDHumidSensor() {
+    while (Si7021_Init() != HAL_OK) {
+        BSP_LED_On(LED_RED);
+    }
+    BSP_LED_On(LED_GREEN);
+    HAL_Delay(100);
+    BSP_LED_Off(LED_GREEN);
 
-	if (Si7021_ReadTempAndHumidity(&temp, &humid) == HAL_OK) {
-		printf("temp: %.2f°C, humid: %.2f \n\r", temp, humid);
-		BSP_LED_On(LED_GREEN);
-		HAL_Delay(100);
-		BSP_LED_Off(LED_GREEN);
-	} else {
-		printf("Error reading Si7021 sensor!\n\r");
-		BSP_LED_On(LED_RED);
-	}
+    if (Si7021_ReadTempAndHumidity(&temp, &humid) == HAL_OK) {
+        printf("temp: %.2f°C, humid: %.2f \n\r", temp, humid);
+        BSP_LED_On(LED_GREEN);
+        HAL_Delay(100);
+        BSP_LED_Off(LED_GREEN);
+    } else {
+        printf("Error reading Si7021 sensor!\n\r");
+        BSP_LED_On(LED_RED);
+    }
 }
-
-//---------------------------------------------------------------------------------------------------
 
 void GETUID(uint8_t *uid) {
     uint32_t uid0 = LL_GetUID_Word0();
     uint32_t uid1 = LL_GetUID_Word1();
-
-    // Example: use last byte of UID2 and 3 bytes of UID0 for uniqueness
     uid[0] = (uid0 >> 24) & 0xFF;
     uid[1] = (uid0 >> 16) & 0xFF;
     uid[2] = (uid1 >> 8) & 0xFF;
     uid[3] = (uid1 >> 0) & 0xFF;
-
-    // Optional: print for debugging
     printf("UID = %02X %02X %02X %02X\r\n", uid[0], uid[1], uid[2], uid[3]);
 }
 
 uint8_t isSameNode(NodeEntry *node, Packet *rx) {
-    return (node->temp == rx->Temperature &&
-            node->hum == rx->Humidity &&
-            node->add == rx->ADD &&
-            node->id_assign == rx->ID_Assign);
+    return (node->temp == rx->ID &&
+            node->hum == rx->Payload[0] &&
+            node->hopcount == rx->Payload[1] &&
+            node->id_assign == rx->Payload[2]);
 }
 
-//uint8_t GetOrAssignID(Packet *rx) {
-//    for (uint8_t i = 0; i < nodeCount; i++) {
-//        if (isSameNode(&knownNodes[i], rx)) {
-//            return knownNodes[i].assignedID;  // Already assigned
-//        }
-//    }
-//
-//    // Not found → assign new ID
-//    if (nodeCount < MAX_NODES) {
-//        knownNodes[nodeCount].temp = rx->Temperature;
-//        knownNodes[nodeCount].hum = rx->Humidity;
-//        knownNodes[nodeCount].add = rx->ADD;
-//        knownNodes[nodeCount].id_assign = rx->ID_Assign;
-//        knownNodes[nodeCount].assignedID = nodeCount + 1;
-//        nodeCount++;
-//        return knownNodes[nodeCount - 1].assignedID;
-//    }
-//
-//    return 0xFF; // Error: too many nodes
-//}
-
-
-void DiscoveryPhaseHandler(uint8_t ID) {
-
-	printf("Discovery request from unassigned node\n\r");
-
-
-
-	txPacket.TransmissionType = ID_ASSIGNMENT;
-	txPacket.ID = MAIN_NODE_ID;
-	txPacket.Destination = rxPacket.Temperature;  // Broadcast
-	txPacket.Temperature = rxPacket.Humidity;  // Broadcast
-	txPacket.Humidity = rxPacket.ADD;  // Broadcast
-	txPacket.ADD = rxPacket.ID_Assign;  // Broadcast
-	txPacket.ID_Assign = ID;  // Using Dunno field to carry new ID
-
-	// Send the assignment
-	CreateLPAWURFrameV2(&txPacket, 0, vectcTxBuff);
-	HAL_Delay(100);
-	MX_APPE_Process();
-
-	printf("Assigned ID %d to new node\n\r", nextAvailableID);
-	MX_APPE_Idle();
-}
-// TX SETUP ----------------------------------------------------------------------------------------------
-
-void RandomNumbersGeneration(Packet* p,uint8_t j,uint8_t* vectcTxBuff)
-{
-	HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
-
-	uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
-
-	//printf("Schedule set \r\n");
-	if (wakeupSource & PWR_WAKEUP_RTC){
-		CreateLPAWURFrameV2(p,j,vectcTxBuff);
-		HAL_Delay(1000);
-		MX_APPE_Process();
-		printf("Packet sent \r\n");
-	}
-
+uint8_t GetOrAssignID(Packet *rx) {
+    for (uint8_t i = 0; i < nodeCount; i++) {
+        if (isSameNode(&knownNodes[i], rx)) {
+            return knownNodes[i].assignedID;
+        }
+    }
+    if (nodeCount < MAX_NODES) {
+        knownNodes[nodeCount].temp = rx->ID;
+        knownNodes[nodeCount].hum = rx->Payload[0];
+        knownNodes[nodeCount].hopcount = rx->Payload[1];
+        knownNodes[nodeCount].id_assign = rx->Payload[2];
+        knownNodes[nodeCount].assignedID = nextAvailableID++;
+        nodeCount++;
+        return knownNodes[nodeCount - 1].assignedID;
+    }
+    return 0xFF;
 }
 
-void CreateLPAWURFrameV2(Packet* packet, uint8_t j, uint8_t* vectcTxBuff) {
-	ID = packet->ID;
-    /* bit sync */
-    for (int i = 0; i < 5; i++)
-        vectcTxBuff[i] = 0x00;
+void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
+    uint8_t assignedID = GetOrAssignID(rxPacketPtr);
+    if (assignedID == 0xFF) {
+        printf("ERROR: Too many nodes, cannot assign more IDs\n\r");
+        return;
+    }
+    printf("Discovery request handled, assigned ID = %d\n\r", assignedID);
 
-    /* Frame sync */
+    txPacket.TransmissionType = ID_ASSIGNMENT;
+    txPacket.ID = MAIN_NODE_ID;
+    txPacket.Destination = rxPacketPtr->ID;
+    txPacket.Payload[0] = rxPacketPtr->Payload[0];
+    txPacket.Payload[1] = rxPacketPtr->Payload[1];
+    txPacket.Payload[2] = rxPacketPtr->Payload[2];
+    txPacket.Payload[3] = assignedID;
+
+    CreateLPAWURFrameV2();
+    HAL_Delay(500);
+    HAL_Delay(HAL_GetTick() % 1000);
+    MX_APPE_Process();
+}
+
+void SendPacket() {
+    HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
+    uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
+    if (wakeupSource & PWR_WAKEUP_RTC) {
+        CreateLPAWURFrameV2();
+        HAL_Delay(1000);
+        MX_APPE_Process();
+        printf("Packet sent \r\n");
+    }
+}
+
+void CreateLPAWURFrameV2() {
+    for (int i = 0; i < 5; i++) vectcTxBuff[i] = 0x00;
     vectcTxBuff[5] = 0x99;
-
-//    if (packet->TransmissionType == DATAREQUEST){
-//		TempANDHumidSensor();
-//		packet->Temperature = temp;
-//		packet->Humidity = humid;
-//    }
-
-    /* Fill Tx buffer with payload */
-    vectcTxBuff[6]  = packet->TransmissionType;
-	vectcTxBuff[7]  = packet->ID;
-	vectcTxBuff[8]  = packet->Destination;
-    vectcTxBuff[9]  = (uint8_t)round(packet->Temperature);
-    vectcTxBuff[10] = (uint8_t)round(packet->Humidity);
-    vectcTxBuff[11] = packet->ADD;
-    vectcTxBuff[12] = packet->ID_Assign;
-
-    /* CRC */
+    vectcTxBuff[6]  = txPacket.TransmissionType;
+    vectcTxBuff[7]  = txPacket.ID;
+    vectcTxBuff[8]  = txPacket.Destination;
+    vectcTxBuff[9]  = (uint8_t)round(txPacket.Payload[0]);
+    vectcTxBuff[10] = (uint8_t)round(txPacket.Payload[1]);
+    vectcTxBuff[11] = txPacket.Payload[2];
+    vectcTxBuff[12] = txPacket.Payload[3];
     EvaluateCrc(&vectcTxBuff[6]);
 }
 
-
-void MX_APPE_Process(void)
-{
-  BSP_LED_On(LD3);
-  __HAL_MRSUBG_STROBE_CMD(CMD_TX);
-  /* Wait for TX done */
-  while((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {};
-  /* Clear the IRQ flag */
-  __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
-  BSP_LED_Off(LD3);
-  LL_LPAWUR_SetState(ENABLE);
+void MX_APPE_Process(void) {
+    BSP_LED_On(LD3);
+    __HAL_MRSUBG_STROBE_CMD(CMD_TX);
+    while ((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {}
+    __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
+    BSP_LED_Off(LD3);
+    LL_LPAWUR_SetState(ENABLE);
 }
 
-//---------------------------------------------------------------------------------------------------
-
-// RX SETUP --------------------------------------------------------------------------------------------
-void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet)
-{
+void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet) {
     handle_packet->TransmissionType = LPAWUR_Pay[0];
     handle_packet->ID = LPAWUR_Pay[1];
     handle_packet->Destination = LPAWUR_Pay[2];
-    handle_packet->Temperature = (float)LPAWUR_Pay[3];
-    handle_packet->Humidity = (float)LPAWUR_Pay[4];
-    handle_packet->ADD = LPAWUR_Pay[5];
-    handle_packet->ID_Assign = LPAWUR_Pay[6];
+    handle_packet->Payload[0] = (float)LPAWUR_Pay[3];
+    handle_packet->Payload[1] = (float)LPAWUR_Pay[4];
+    handle_packet->Payload[2] = LPAWUR_Pay[5];
+    handle_packet->Payload[3] = LPAWUR_Pay[6];
 }
 
-void GotoRx(uint8_t* PR)
-{
-/* Wakeup source configuration */
- Packet rxPacket;
- printf("Waiting for responses \r\n");
- LL_LPAWUR_SetState(ENABLE); // Ensure LPAWUR is listening
+void GotoRx(uint8_t* PR) {
+    printf("Waiting for responses \r\n");
+    LL_LPAWUR_SetState(ENABLE);
+    HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, 1);
+    uint32_t wakeupSource2 = HAL_PWREx_GetClearInternalWakeUpLine();
 
- HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, 1); // Enable wakeup source
- uint32_t wakeupSource2 = HAL_PWREx_GetClearInternalWakeUpLine();
- /* Wakeup on LPAWUR Frame Valid */
- if (wakeupSource2 && PWR_WAKEUP_LPAWUR)
- {
-	BSP_LED_On(LD2);
-	HAL_LPAWUR_GetPayload(LPAWUR_Payload);
+    if (wakeupSource2 && PWR_WAKEUP_LPAWUR) {
+        BSP_LED_On(LD2);
+        HAL_LPAWUR_GetPayload(LPAWUR_Payload);
+        PacketHandler(LPAWUR_Payload, &rxPacket);
 
-	//GET packet infos
-	PacketHandler(LPAWUR_Payload,&rxPacket);
+        switch (rxPacket.TransmissionType) {
 
+            case DISCOVERY_RESP:
+                printf("Received DISCOVERY_RESP from UID [%02X %02X %02X %02X]\n\r",
+                    rxPacket.ID,
+                    (uint8_t)rxPacket.Payload[0],
+                    (uint8_t)rxPacket.Payload[1],
+                    rxPacket.Payload[2]);
+                DiscoveryPhaseHandler(&rxPacket);
+                break;
 
-	// Check the transmission type
-	switch (rxPacket.TransmissionType)
-	{
-		case DISCOVERY_RESP:
-			printf("Transmission Type: DISCOVERY\n\r");
-			DiscoveryPhaseHandler(nextAvailableID);
-			break;
+            case DATAREP:
+                temp = rxPacket.Payload[0];
+                humid = rxPacket.Payload[1];
+                printf("DATAREP from %x: Temp = %.2f°C, Humid = %.2f%%\n\r",
+                    rxPacket.ID, temp, humid);
+                break;
 
-		case DATAREP:
-			printf("Transmission Type: DATAREQ\n\r");
+            default:
+                printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
+                break;
+        }
 
-			// Update global temp & humid for printing
-			temp = rxPacket.Temperature;
-			humid = rxPacket.Humidity;
+        if (rxPacket.ID == checkForID) {
+            (*PR)++;
+        }
 
-			printf("My packet NGL\r\n");
-			printf("LPAWUR data received: [ ");
-			printf("Sender's ID : %x ,",rxPacket.ID);
-			printf("Target Destination : %x ,",rxPacket.Destination);
-			printf("temp: %.2f°C, humid: %.2f%% ,", temp, humid);
-			printf(" ]\n\r");
-
-			break;
-
-		default:
-			printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
-			break;
-	}
-
-	if (rxPacket.ID == checkForID){
-		(*PR)++;
-	}
-
-	HAL_LPAWUR_ClearStatus();
-	LL_LPAWUR_SetState(ENABLE);
-	//printf("Changing to TX \r\n");
-	HAL_Delay(1000);
-	BSP_LED_Off(LD2);
- }
+        HAL_LPAWUR_ClearStatus();
+        LL_LPAWUR_SetState(ENABLE);
+        HAL_Delay(1000);
+        BSP_LED_Off(LD2);
+    }
 }
+
 /* USER CODE END MX_APPE_Process_2 */
 #if (CFG_LPM_SUPPORTED == 1)
 static PowerSaveLevels App_PowerSaveLevel_Check(void)
