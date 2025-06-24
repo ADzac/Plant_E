@@ -1,3 +1,4 @@
+
 #ifndef TRANSMISSION_H
 #define TRANSMISSION_H
 
@@ -13,6 +14,8 @@
 #include "stm32wl3x_ll_usart.h"
 #include "stm32wl3x_ll_lpawur.h"
 #include "stm32wl3x_nucleo.h"
+#include "stm32wl3x_ll_rng.h"
+
 #include<stdio.h>
 
 #include "math.h"
@@ -22,19 +25,20 @@
 #include "temphumid.h"
 
 
-#define DISCOVERY_REQ 10
-#define DISCOVERY_RESP 11
-#define ID_ASSIGNMENT 12
-#define DATAREQ 13
-#define DATAREP 14
+#define DISCOVERY_REQ 0
+#define DISCOVERY_RESP 1
+#define ID_ASSIGNMENT 2
+#define DATAREQ 3
+#define DATAREP 4
 
-#define ALERT 15
+#define ALERT 5
 
 #define MAIN_NODE_ID 0
 #define UNASSIGNED_ID 0xFF
 #define MAX_CACHE 10
 
 typedef struct {
+    uint8_t valid;
     uint8_t sender;
     uint8_t transType;
     uint8_t temp;
@@ -42,10 +46,12 @@ typedef struct {
     uint8_t hop;
 } PacketSignature;
 
+
 typedef struct {
     uint8_t TransmissionType;
     uint8_t ID;
     uint8_t Destination; //only for first discovery
+    uint8_t UID[4];
     uint8_t Payload[4]; // only for first discovery than can be use for something else i.e. TTL
 } Packet;
 
