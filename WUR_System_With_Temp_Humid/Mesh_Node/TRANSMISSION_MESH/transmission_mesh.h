@@ -15,7 +15,7 @@
 #include "stm32wl3x_ll_lpawur.h"
 #include "stm32wl3x_nucleo.h"
 #include "stm32wl3x_ll_rng.h"
-
+#include<stdlib.h>
 #include<stdio.h>
 
 #include "math.h"
