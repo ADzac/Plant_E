@@ -55,29 +55,47 @@ void GETUID(uint8_t *uid) {
 }
 
 uint8_t isSelfPacket(Packet *pkt) {
-    return (pkt->ID == UID[0] &&
+    return (pkt->ID == myID || (pkt->ID == UID[0] &&
             (uint8_t)pkt->Payload[0] == UID[1] &&
             (uint8_t)pkt->Payload[1] == UID[2] &&
-            pkt->Payload[2] == UID[3]);
+            pkt->Payload[2] == UID[3]));
 }
 
 uint8_t shouldForward(Packet *pkt) {
-    if (isSelfPacket(pkt)) return 0;
+    if (isSelfPacket(pkt)) {
+        printf("Mine \r\n");
+        return 0;
+    }
 
+    // Check if we already forwarded this exact packet
     for (int i = 0; i < MAX_CACHE; i++) {
         if (packetCache[i].valid &&
             packetCache[i].sender == pkt->ID &&
             packetCache[i].transType == pkt->TransmissionType &&
             packetCache[i].temp == (uint8_t)pkt->Payload[0] &&
             packetCache[i].humid == (uint8_t)pkt->Payload[1]) {
+
+            // Compare hop: allow forwarding only if hop is better (lower)
             if (pkt->Payload[2] < packetCache[i].hop) {
                 packetCache[i].hop = pkt->Payload[2];
+
+                // Modify packet: increment hop, decrement TTL
+                pkt->Payload[2]++;  // hop++
+                pkt->Payload[3]--;  // ttl--
+
+                if (pkt->Payload[3] == 0) {
+                    printf("TTL expired \r\n");
+                    return 0;
+                }
+
                 return 1;
             }
+
             return 0;
         }
     }
 
+    // New packet, store it and forward
     for (int i = 0; i < MAX_CACHE; i++) {
         if (!packetCache[i].valid) {
             packetCache[i].valid = 1;
@@ -86,10 +104,21 @@ uint8_t shouldForward(Packet *pkt) {
             packetCache[i].temp = (uint8_t)pkt->Payload[0];
             packetCache[i].humid = (uint8_t)pkt->Payload[1];
             packetCache[i].hop = pkt->Payload[2];
+
+            // Modify packet before forwarding
+            pkt->Payload[2]++;  // hop++
+            pkt->Payload[3]--;  // ttl--
+
+            if (pkt->Payload[3] == 0) {
+                printf("TTL expired \r\n");
+                return 0;
+            }
+
             return 1;
         }
     }
 
+    printf("Cache full, dropping packet \r\n");
     return 0;
 }
 
@@ -97,21 +126,29 @@ uint8_t shouldForward(Packet *pkt) {
 //----------------------------- TX ------------------------------------
 uint16_t SimpleRand16(void)
 {
-    LL_RNG_Enable(RNG);
-    while (!LL_RNG_IsActiveFlag_RNGRDY(RNG));
-    uint16_t val = LL_RNG_ReadRandData16(RNG);
-    printf("%d \r\n",val);
+    uint16_t* val = malloc(sizeof(uint16_t));
+    if (val == NULL) {
+        printf("Memory allocation failed\n");
+        return 1;
+    }
 
-    val = val >> 2;
-    LL_RNG_Disable(RNG);
-    printf("%d \r\n",val);
-    return val;
+    *val = LL_RNG_ReadRandData16(RNG);  // replace NULL with RNG if available
+
+    //printf("Original value: %u \r\n", *val);  // use %u for uint16_t
+
+    // Perform right-shift on value, not pointer
+    *val = *val >> 3;
+
+    printf("Shifted value: %u \r\n", *val);
+    HAL_Delay(*val);
+    free(val);
+    return 0;
 }
 
 void RandomNumbersGeneration(uint8_t j, uint8_t* vectcTxBuff) {
     CreateLPAWURFrameV2(j, vectcTxBuff);
-
-    HAL_Delay(SimpleRand16());
+    SimpleRand16();
+    //HAL_Delay(SimpleRand16());
     MX_APPE_Process();
 }
 
@@ -136,7 +173,7 @@ void MX_APPE_Process(void) {
     while((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {}
     __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
     BSP_LED_Off(LD3);
-    LL_LPAWUR_SetState(ENABLE);
+
 }
 uint8_t PackMinimal() {
 	temp = (uint8_t)round((temp));  // Mask to 4 bits
@@ -173,7 +210,7 @@ void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
 			printf("DISCOVERY_REQ received\n\r");
 
 			// Rebroadcast discovery
-			if (rxPacket.Payload[3] > 0 /*&& shouldForward(&rxPacket)*/) {
+			if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
 				txPacket = rxPacket;
 				txPacket.Payload[2] += 1;
 				txPacket.Payload[3] -= 1;
@@ -196,7 +233,7 @@ void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
 			break;
 
             case DISCOVERY_RESP:
-                if (rxPacket.Destination == MAIN_NODE_ID && rxPacket.Payload[3] > 0 /*&& shouldForward(&rxPacket)*/) {
+                if (rxPacket.Destination == MAIN_NODE_ID && rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
                     txPacket = rxPacket;
                     txPacket.Payload[2] += 1;
                     txPacket.Payload[3] -= 1;
@@ -206,7 +243,7 @@ void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
 
             case DATAREQ:
 
-				if (rxPacket.Payload[3] > 0 /*&& shouldForward(&rxPacket)*/) {
+				if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
 					txPacket = rxPacket;
 					txPacket.Payload[2] += 1;
 					txPacket.Payload[3] -= 1;
@@ -268,6 +305,7 @@ void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
 
         HAL_LPAWUR_ClearStatus();
         LL_LPAWUR_SetState(ENABLE);
+        printf("Finish \r\n");
         HAL_Delay(100);
         BSP_LED_Off(LD2);
     }
