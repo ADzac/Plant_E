@@ -1,3 +1,4 @@
+
 #include "main.h"
 
 
@@ -23,6 +24,7 @@ static void MX_GPIO_Init(void);
 void UTIL_LPM_Init(void);
 void RX_TX_Init(void);
 static void MX_LPAWUR_Init(void);
+static void MX_RNG_Init(void);
 void UTIL_LPM_Init( void );
 void MX_I2C2_Init(void);
 /*----------------------------------------------------------------------------*/
@@ -38,13 +40,15 @@ int main(void)
 	MX_I2C2_Init();
 	MX_LPAWUR_Init();
 	UTIL_LPM_Init();
+	MX_RNG_Init();
 	RX_TX_Init();
 	GETUID(UID); // Ensure UID is populated
 
 //	Packet myPacket;
 	for (int i = 0; i < MAX_CACHE; i++) {
-	    packetCache[i].transType = 0xFF; // or set all fields to 0xFF
+	    packetCache[i].valid = 0;
 	}
+
 
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
@@ -53,6 +57,7 @@ int main(void)
 	{
 		GotoRx(&packet_Received,vectcTxBuff);
 		MX_APPE_Idle();
+		datareqSent = 0;
 	}
 }
 
@@ -73,6 +78,26 @@ void RX_TX_Init(void){
 	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
 	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
 	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuff);
+}
+
+static void MX_RNG_Init(void)
+{
+
+  /* USER CODE BEGIN RNG_Init 0 */
+
+  /* USER CODE END RNG_Init 0 */
+
+  /* Peripheral clock enable */
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_RNG);
+
+  /* USER CODE BEGIN RNG_Init 1 */
+
+  /* USER CODE END RNG_Init 1 */
+  LL_RNG_Enable(RNG);
+  /* USER CODE BEGIN RNG_Init 2 */
+
+  /* USER CODE END RNG_Init 2 */
+
 }
 
 static void MX_MRSUBG_Init(void)
