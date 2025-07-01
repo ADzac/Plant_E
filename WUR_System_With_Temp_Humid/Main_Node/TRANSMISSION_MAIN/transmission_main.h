@@ -30,7 +30,7 @@
 #define ALERT 5
 
 #define MAIN_NODE_ID 0
-#define UNASSIGNED_ID 0xFF
+#define UNASSIGNED_ID 254
 
 
 #if defined(__ARMCC_VERSION)
