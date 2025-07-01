@@ -34,7 +34,7 @@
 #define ALERT 5
 
 #define MAIN_NODE_ID 0
-#define UNASSIGNED_ID 0xFF
+#define UNASSIGNED_ID 254
 #define MAX_CACHE 10
 
 typedef struct {
