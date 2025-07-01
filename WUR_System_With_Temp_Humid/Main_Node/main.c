@@ -1,6 +1,6 @@
 #include "main.h"
 
-#define WAKEUP_TIMEOUT 20000 // 10 seconds
+#define WAKEUP_TIMEOUT 30000 // 10 seconds
 
 uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY_REQ;
@@ -56,19 +56,17 @@ int main(void)
 	txPacket.TransmissionType = TYPE;
 	txPacket.ID = MAIN_NODE_ID;
 	txPacket.Destination = UNASSIGNED_ID;
-
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
 	while (1)
 	{
-		 if (mode == 0){
-			 SendPacket();
+		if (mode == 0){
+			SendPacket();
 			mode = 1;
 		}
 
-		 GotoRx(&packet_Received);
-//		 HAL_Delay(5000);
-		 MX_APPE_Idle(); // Enter Stop mode
+		GotoRx(&packet_Received);
+		MX_APPE_Idle(); // Enter Stop mode
 	}
 }
 
@@ -78,24 +76,21 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
     mode = 0;
 
-    // Every 240 seconds (24 * 10s)
-    if (wakeup_counter == 24)  // Only check for 24, not 0
-    {
-        //printf("Here \r\n");
-        TYPE = DISCOVERY_REQ;
-        txPacket.TransmissionType = TYPE;
-        BSP_LED_Toggle(LD3);
-        wakeup_counter = 1;  // Reset counter
-    }
+       init_data_storage();
 
-    else
-    {
-        // Every 10 seconds
-        BSP_LED_Toggle(LD1);
-        TYPE = DATAREQ;
-        txPacket.TransmissionType = TYPE;
-    }
-    wakeup_counter++;
+       if (wakeup_counter >= 24) {
+           TYPE = DISCOVERY_REQ;
+           BSP_LED_Toggle(LD3);
+           wakeup_counter = 1;
+       } else {
+           TYPE = DATAREQ;
+           BSP_LED_Toggle(LD1);
+       }
+
+       wakeup_counter++;
+       txPacket.TransmissionType = TYPE;
+       txPacket.Payload[2] = 0;
+       txPacket.Payload[3] = 5;
 
     //printf("Counter %d \r\n", wakeup_counter);
 }
