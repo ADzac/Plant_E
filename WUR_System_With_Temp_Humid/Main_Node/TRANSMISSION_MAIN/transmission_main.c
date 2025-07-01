@@ -15,6 +15,9 @@ uint8_t LPAWUR_Payload[8];
 
 uint8_t ID = 1;
 uint8_t checkForID = 5;
+uint8_t IDList[255] = {0xFF};
+uint8_t IDListSize = 1;  // Track how many IDs are in the list
+uint8_t alreadyReceived;
 
 int16_t rssi = 0;
 int16_t rssi_min = 0;
@@ -29,20 +32,94 @@ float humid = 0;
 uint8_t nextAvailableID = 1;
 NodeEntry knownNodes[MAX_NODES];
 uint8_t nodeCount = 0;
+uint8_t uid[4];
+
+void init_data_storage(void) {
+    memset(receivedData, 0, sizeof(receivedData));
+    receivedDataCount = 0;
+    alreadyReceived = 0;
+}
+
+
+uint8_t compareUIDs(uint8_t *uid1, uint8_t *uid2) {
+    for (int i = 0; i < 4; i++) {
+        if (uid1[i] != uid2[i]) return 0;
+    }
+    return 1;
+}
+
+int8_t getAssignedID(uint8_t *uid) {
+    for (uint8_t i = 0; i < nodeCount; i++) {
+        if (compareUIDs(knownNodes[i].uid, uid)) {
+            return knownNodes[i].assignedID;
+        }
+    }
+    return -1;  // Not found
+}
+
+uint8_t assignIDToUID(uint8_t *uid) {
+    int8_t existingID = getAssignedID(uid);
+    if (existingID != -1) {
+        return (uint8_t)existingID;  // Already assigned
+    }
+
+    if (nodeCount >= MAX_NODES) {
+        printf("Maximum node limit reached.\n\r");
+        return 0xFF;  // Invalid ID
+    }
+
+    uint8_t newID = nextAvailableID;  // Or generate using any other method
+    memcpy(knownNodes[nodeCount].uid, uid, 4);
+    knownNodes[nodeCount].assignedID = newID;
+    nodeCount++;
+
+    AddToIDList(newID);
+
+    printf("Assigned new ID %d to UID [%02X %02X %02X %02X]\n\r",
+           newID, uid[0], uid[1], uid[2], uid[3]);
+    nextAvailableID++;
+    return newID;
+}
+
+
+// Function to add an ID to the IDList if it doesn't already exist
+void AddToIDList(uint8_t id) {
+    if (id == 0xFF) return;  // Don't add invalid ID
+
+    // Check if ID already exists
+    for (uint8_t i = 0; i < IDListSize; i++) {
+        if (IDList[i] == id) {
+            return;  // ID already exists
+        }
+    }
+
+    // Add new ID if there's space
+    if (IDListSize < 255) {
+        IDList[IDListSize++] = id;
+        printf("Added ID %d to IDList\n\r", id);
+    } else {
+        printf("IDList full, cannot add ID %d\n\r", id);
+    }
+}
+
+// Function to check if an ID is in the IDList
+uint8_t IsInIDList(uint8_t id) {
+    for (uint8_t i = 0; i < IDListSize; i++) {
+        if (IDList[i] == id) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 void TempANDHumidSensor() {
     while (Si7021_Init() != HAL_OK) {
         BSP_LED_On(LED_RED);
     }
-    BSP_LED_On(LED_GREEN);
-    HAL_Delay(100);
-    BSP_LED_Off(LED_GREEN);
 
     if (Si7021_ReadTempAndHumidity(&temp, &humid) == HAL_OK) {
         printf("temp: %.2f°C, humid: %.2f \n\r", temp, humid);
-        BSP_LED_On(LED_GREEN);
-        HAL_Delay(100);
-        BSP_LED_Off(LED_GREEN);
+
     } else {
         printf("Error reading Si7021 sensor!\n\r");
         BSP_LED_On(LED_RED);
@@ -59,52 +136,39 @@ void GETUID(uint8_t *uid) {
     printf("UID = %02X %02X %02X %02X\r\n", uid[0], uid[1], uid[2], uid[3]);
 }
 
-uint8_t isSameNode(NodeEntry *node, Packet *rx) {
-    return (node->temp == rx->ID &&
-            node->hum == rx->Payload[0] &&
-            node->hopcount == rx->Payload[1] &&
-            node->id_assign == rx->Payload[2]);
-}
-
-uint8_t GetOrAssignID(Packet *rx) {
-    for (uint8_t i = 0; i < nodeCount; i++) {
-        if (isSameNode(&knownNodes[i], rx)) {
-            return knownNodes[i].assignedID;
-        }
-    }
-    if (nodeCount < MAX_NODES) {
-        knownNodes[nodeCount].temp = rx->ID;
-        knownNodes[nodeCount].hum = rx->Payload[0];
-        knownNodes[nodeCount].hopcount = rx->Payload[1];
-        knownNodes[nodeCount].id_assign = rx->Payload[2];
-        knownNodes[nodeCount].assignedID = nextAvailableID++;
-        nodeCount++;
-        return knownNodes[nodeCount - 1].assignedID;
-    }
-    return 0xFF;
-}
 
 void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
-    uint8_t assignedID = GetOrAssignID(rxPacketPtr);
+    // 1. Extract UID from the received packet
+    uint8_t uid[4];
+    uid[0] = rxPacketPtr->ID;
+    uid[1] = rxPacketPtr->Destination;
+    uid[2] = (uint8_t)rxPacketPtr->Payload[0];
+    uid[3] = (uint8_t)rxPacketPtr->Payload[1];;
+
+    // 2. Assign ID based on UID
+    uint8_t assignedID = assignIDToUID(uid);
     if (assignedID == 0xFF) {
         printf("ERROR: Too many nodes, cannot assign more IDs\n\r");
         return;
     }
+
     printf("Discovery request handled, assigned ID = %d\n\r", assignedID);
 
+    // 3. Prepare response packet with assigned ID
     txPacket.TransmissionType = ID_ASSIGNMENT;
-    txPacket.ID = MAIN_NODE_ID;
-    txPacket.Destination = rxPacketPtr->ID;
-    txPacket.Payload[0] = rxPacketPtr->Payload[0];
-    txPacket.Payload[1] = rxPacketPtr->Payload[1];
-    txPacket.Payload[2] = rxPacketPtr->Payload[2];
+    txPacket.ID = uid[0];                   // Who is sending the packet (the main controller)
+    txPacket.Destination = uid[1];       // Who is receiving the packet (the original sender)
+    txPacket.Payload[0] = uid[2];
+    txPacket.Payload[1] = uid[3];
+    txPacket.Payload[2] = 0;
     txPacket.Payload[3] = assignedID;
 
-    CreateLPAWURFrameV2();
-    HAL_Delay(500);
-    HAL_Delay(HAL_GetTick() % 1000);
-    MX_APPE_Process();
+    CreateLPAWURFrameV2();  // Your custom packet creation logic
+    HAL_Delay(500);         // Wait 500 ms
+    HAL_Delay(HAL_GetTick() % 1000);  // Add some jitter
+    MX_APPE_Process();      // Continue processing (maybe RF stack-related)
 }
+
 
 void SendPacket() {
     HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
@@ -120,7 +184,7 @@ void SendPacket() {
 void CreateLPAWURFrameV2() {
     for (int i = 0; i < 5; i++) vectcTxBuff[i] = 0x00;
     vectcTxBuff[5] = 0x99;
-    vectcTxBuff[6]  = txPacket.TransmissionType;
+    vectcTxBuff[6]  = (txPacket.TransmissionType << 4) | (MAIN_NODE_ID & 0x0F);
     vectcTxBuff[7]  = txPacket.ID;
     vectcTxBuff[8]  = txPacket.Destination;
     vectcTxBuff[9]  = (uint8_t)round(txPacket.Payload[0]);
@@ -149,47 +213,64 @@ void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet) {
     handle_packet->Payload[3] = LPAWUR_Pay[6];
 }
 
+
 void GotoRx(uint8_t* PR) {
     printf("Waiting for responses \r\n");
     LL_LPAWUR_SetState(ENABLE);
     HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, 1);
     uint32_t wakeupSource2 = HAL_PWREx_GetClearInternalWakeUpLine();
 
-    if (wakeupSource2 && PWR_WAKEUP_LPAWUR) {
+    if (wakeupSource2 & PWR_WAKEUP_LPAWUR) {
         BSP_LED_On(LD2);
         HAL_LPAWUR_GetPayload(LPAWUR_Payload);
         PacketHandler(LPAWUR_Payload, &rxPacket);
-
-        switch (rxPacket.TransmissionType) {
-
+        int transType = (rxPacket.TransmissionType >> 4) & 0x0F;
+        //printf("%d \r\n",transType);
+        switch (transType) {
             case DISCOVERY_RESP:
-                printf("Received DISCOVERY_RESP from UID [%02X %02X %02X %02X]\n\r",
-                    rxPacket.ID,
-                    (uint8_t)rxPacket.Payload[0],
-                    (uint8_t)rxPacket.Payload[1],
-                    rxPacket.Payload[2]);
                 DiscoveryPhaseHandler(&rxPacket);
                 break;
 
             case DATAREP:
-                temp = rxPacket.Payload[0];
-                humid = rxPacket.Payload[1];
-                printf("DATAREP from %x: Temp = %.2f°C, Humid = %.2f%%\n\r",
-                    rxPacket.ID, temp, humid);
+                if (IsInIDList(rxPacket.ID)== 1) {
+                	printf("%d \r\n",IDListSize);
+                	if (IsInIDList(rxPacket.ID) == 1) {
+                	    if (receivedData[rxPacket.ID].received == 1) {
+                	        printf("Dropping duplicate DATAREP from ID %d\n\r", rxPacket.ID);
+                	    } else {
+                	    	receivedData[rxPacket.ID].id = rxPacket.ID;
+                	        receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
+                	        receivedData[rxPacket.ID].humid = rxPacket.Payload[1];
+                	        receivedData[rxPacket.ID].received = 1;
+
+                	        printf("DATAREP from %x: Temp = %d°C, Humid = %d%%\n\r",
+                	               rxPacket.ID, rxPacket.Payload[0], rxPacket.Payload[1]);
+                	    }
+                	}
+                }
+                else {
+                    printf("Dropping DATAREP from unknown ID %d\n\r", rxPacket.ID);
+                }
+                printf("Here \r\n");
                 break;
 
+            case DATAREQ:
+                break;
+            case DISCOVERY_REQ:
+                break;
+            case ID_ASSIGNMENT:
+                break;
+            case ALERT:
+                printf("NI NO NI NO \r\n");
+                break;
             default:
                 printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
                 break;
         }
 
-        if (rxPacket.ID == checkForID) {
-            (*PR)++;
-        }
-
         HAL_LPAWUR_ClearStatus();
         LL_LPAWUR_SetState(ENABLE);
-        HAL_Delay(1000);
+        HAL_Delay(100);
         BSP_LED_Off(LD2);
     }
 }
