@@ -71,4 +71,5 @@ extern uint8_t UID[4];
 extern Packet txPacket;
 extern uint8_t vectcTxBuff[15];
 extern PacketSignature packetCache[MAX_CACHE];
+extern uint8_t datareqSent;
 #endif
