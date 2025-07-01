@@ -15,7 +15,7 @@ uint8_t LPAWUR_Payload[8];
 
 uint8_t ID = 1;
 uint8_t checkForID = 5;
-uint8_t IDList[255]={0xFF};
+uint8_t IDList[255]={254};
 uint8_t IDListSize = 1;  // Track how many IDs are in the list
 uint8_t alreadyReceived;
 
