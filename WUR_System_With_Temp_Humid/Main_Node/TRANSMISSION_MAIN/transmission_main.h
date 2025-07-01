@@ -14,20 +14,20 @@
 #include "stm32wl3x_ll_lpawur.h"
 #include "stm32wl3x_nucleo.h"
 #include<stdio.h>
-
+#include <stdlib.h>
 #include "math.h"
 #include "app_conf.h"
 #include "crc_4wkup_rf.h"
 #include "stm32_lpm.h"
 #include "temphumid.h"
 
-#define DISCOVERY_REQ 10
-#define DISCOVERY_RESP 11
-#define ID_ASSIGNMENT 12
-#define DATAREQ 13
-#define DATAREP 14
+#define DISCOVERY_REQ 0
+#define DISCOVERY_RESP 1
+#define ID_ASSIGNMENT 2
+#define DATAREQ 3
+#define DATAREP 4
 
-#define ALERT 15
+#define ALERT 5
 
 #define MAIN_NODE_ID 0
 #define UNASSIGNED_ID 0xFF
@@ -49,12 +49,24 @@ typedef struct {
 } Packet;
 
 typedef struct {
-    uint8_t temp;
-    uint8_t hum;
-    uint8_t hopcount;
-    uint8_t id_assign;
+    uint8_t uid[4];  // Assuming UID is 4 bytes
     uint8_t assignedID;
 } NodeEntry;
+
+typedef struct {
+    uint8_t nodeID;
+    float temperature;
+    float humidity;
+    float battery;
+} SensorData;
+
+// Structure to track received data reports
+typedef struct {
+    uint8_t id;
+    float temp;
+    float humid;
+    uint8_t received;  // Flag to indicate if we've received data from this ID
+} DataReport;
 
 #define MAX_NODES 50
 
@@ -67,9 +79,20 @@ void MX_APPE_Idle(void);
 void GETUID(uint8_t *uid);
 void DiscoveryPhaseHandler(Packet* rxPacketptr);
 void AssignID(uint8_t newID);
+void init_data_storage();
+uint8_t compareUIDs(uint8_t *uid1, uint8_t *uid2) ;
+int8_t getAssignedID(uint8_t *uid);
+uint8_t assignIDToUID(uint8_t *uid) ;
+void AddToIDList(uint8_t id);
 
 extern Packet txPacket;
 extern Packet rxPacket;
 extern uint8_t vectcTxBuff[15];
+extern uint8_t alreadyReceived;
 
+static DataReport receivedData[MAX_NODES];
+static uint8_t receivedDataCount;
+
+extern uint8_t IDList[255];  // Start with all zeros
+extern uint8_t IDListSize;
 #endif
