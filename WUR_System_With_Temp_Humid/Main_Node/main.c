@@ -76,21 +76,22 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
     mode = 0;
 
-       init_data_storage();
+   init_data_storage();
 
-       if (wakeup_counter >= 24) {
-           TYPE = DISCOVERY_REQ;
-           BSP_LED_Toggle(LD3);
-           wakeup_counter = 1;
-       } else {
-           TYPE = DATAREQ;
-           BSP_LED_Toggle(LD1);
-       }
+   if (wakeup_counter >= 24) {
+	   TYPE = DISCOVERY_REQ;
+	   BSP_LED_Toggle(LD3);
+	   wakeup_counter = 1;
+   } else {
+	   TYPE = DATAREQ;
+	   BSP_LED_Toggle(LD1);
+   }
 
-       wakeup_counter++;
-       txPacket.TransmissionType = TYPE;
-       txPacket.Payload[2] = 0;
-       txPacket.Payload[3] = 5;
+   wakeup_counter++;
+   txPacket.ID = MAIN_NODE_ID;
+   txPacket.TransmissionType = TYPE;
+   txPacket.Payload[2] = 0;
+   txPacket.Payload[3] = 5;
 
     //printf("Counter %d \r\n", wakeup_counter);
 }
