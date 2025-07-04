@@ -24,10 +24,11 @@
 #define DISCOVERY_REQ 0
 #define DISCOVERY_RESP 1
 #define ID_ASSIGNMENT 2
-#define DATAREQ 3
-#define DATAREP 4
+#define ID_RECEIVED 3
+#define DATAREQ 4
+#define DATAREP 5
 
-#define ALERT 5
+#define ALERT 10
 
 #define MAIN_NODE_ID 0
 #define UNASSIGNED_ID 254
@@ -44,7 +45,7 @@
 typedef struct {
     uint8_t TransmissionType;
     uint8_t ID;
-    uint8_t Destination;
+    uint8_t Destination; // for hop cases, if missing node than try to reach it
     uint8_t Payload[4];
 } Packet;
 
@@ -68,7 +69,7 @@ typedef struct {
     uint8_t received;  // Flag to indicate if we've received data from this ID
 } DataReport;
 
-#define MAX_NODES 50
+#define MAX_NODES 255
 
 void CreateLPAWURFrameV2();
 void SendPacket();
@@ -90,8 +91,7 @@ extern Packet rxPacket;
 extern uint8_t vectcTxBuff[15];
 extern uint8_t alreadyReceived;
 
-static DataReport receivedData[MAX_NODES];
-static uint8_t receivedDataCount;
+
 
 extern uint8_t IDList[255];  // Start with all zeros
 extern uint8_t IDListSize;
