@@ -29,7 +29,8 @@ float humid = 0;
 uint8_t nextAvailableID = 1;
 NodeEntry knownNodes[MAX_NODES];
 uint8_t nodeCount = 0;
-uint8_t uid[4];
+uint8_t uid[4],assignedID;
+uint8_t SendDatabase = 0;
 
 static DataReport receivedData[MAX_NODES];
 static uint8_t receivedDataCount;
@@ -38,6 +39,7 @@ void init_data_storage(void) {
     memset(receivedData, 0, MAX_NODES*sizeof(receivedData[0]));
     receivedDataCount = 0;
     alreadyReceived = 0;
+    SendDatabase = 0;
 }
 
 //----------------------------- ID Handler ------------------------------------
@@ -79,8 +81,6 @@ uint8_t assignIDToUID(uint8_t *uid) {
     knownNodes[nodeCount].assignedID = newID;
     nodeCount++;
 
-    AddToIDList(newID);
-
     printf("Assigned new ID %d to UID [%02X %02X %02X %02X]\n\r",newID, uid[0], uid[1], uid[2], uid[3]);
     nextAvailableID++;
     return newID;
@@ -101,6 +101,7 @@ void AddToIDList(uint8_t id) {
     if (IDListSize < 255) {
         IDList[IDListSize++] = id;
         printf("Added ID %d to IDList\n\r", id);
+        printf("ID List Size %d \n\r",IDListSize);
     }
     else printf("IDList full, cannot add ID %d\n\r", id);
 }
@@ -134,7 +135,7 @@ void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
     uid[3] = (uint8_t)rxPacketPtr->Payload[1];
 
     // 2. Assign ID based on UID
-    uint8_t assignedID = assignIDToUID(uid);
+    assignedID = assignIDToUID(uid);
     if (assignedID == 0xFF) {
         printf("ERROR: Too many nodes, cannot assign more IDs\n\r");
         return;
@@ -157,6 +158,12 @@ void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
     MX_APPE_Process();      // Continue processing (maybe RF stack-related)
 }
 
+void SendToDataBase(void){
+	if (SendDatabase == 0){
+		printf("Sending to DB \n\r");
+		SendDatabase = 1;
+	}
+}
 //----------------------------- TX ------------------------------------
 void SendPacket() {
     HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
@@ -220,7 +227,19 @@ void GotoRx(uint8_t* PR) {
                 break;
 
             case DATAREP:
-                if (IsInIDList(rxPacket.ID)== 1) {
+            	if (rxPacket.ID == UNASSIGNED_ID){
+            		txPacket.ID = MAIN_NODE_ID;
+					txPacket.TransmissionType = DISCOVERY_REQ;
+					txPacket.Payload[2] = 0;
+					txPacket.Payload[3] = 5;
+					SendPacket(&txPacket);
+            	}
+            	if (nodeCount != IDListSize){
+            		for (int c = 0 ; c < nodeCount ; c ++){
+            			if (knownNodes[c].assignedID == rxPacket.ID) AddToIDList(rxPacket.ID);
+            		}
+            	}
+            	if (IsInIDList(rxPacket.ID)== 1) {
                 	    if (receivedData[rxPacket.ID].received == 1) {
                 	        //printf("Dropping duplicate DATAREP from ID %d\n\r", rxPacket.ID);
                 	    } else {
@@ -228,7 +247,7 @@ void GotoRx(uint8_t* PR) {
                 	        receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
                 	        receivedData[rxPacket.ID].humid = rxPacket.Payload[1];
                 	        receivedData[rxPacket.ID].received = 1;
-
+                	        receivedDataCount++;
                 	        printf("DATAREP from %x: Temp = %d°C, Humid = %d%%\n\r",
                 	               rxPacket.ID, rxPacket.Payload[0], rxPacket.Payload[1]);
                 	    }
@@ -236,6 +255,8 @@ void GotoRx(uint8_t* PR) {
                 else {
                     //printf("Dropping DATAREP from unknown ID %d\n\r", rxPacket.ID);
                 }
+
+                if (receivedDataCount == IDListSize) SendToDataBase();
                 break;
 
             case DATAREQ:
@@ -246,6 +267,7 @@ void GotoRx(uint8_t* PR) {
                 break;
             case ID_RECEIVED:
             	if (IsInIDList(txPacket.ID) == 1) printf("Id already assigned : %d \n\r", txPacket.ID);
+            	else  AddToIDList(rxPacket.ID);
 				break;
             case ALERT:
                 printf("NI NO NI NO \r\n");
