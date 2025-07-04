@@ -228,11 +228,15 @@ void GotoRx(uint8_t* PR) {
 
             case DATAREP:
             	if (rxPacket.ID == UNASSIGNED_ID){
+            		printf("Unknown NODE \n\r");
             		txPacket.ID = MAIN_NODE_ID;
 					txPacket.TransmissionType = DISCOVERY_REQ;
 					txPacket.Payload[2] = 0;
 					txPacket.Payload[3] = 5;
-					SendPacket(&txPacket);
+					CreateLPAWURFrameV2();
+					HAL_Delay(200);
+					MX_APPE_Process();
+					printf("Packet sent \r\n");
             	}
             	if (nodeCount != IDListSize){
             		for (int c = 0 ; c < nodeCount ; c ++){
