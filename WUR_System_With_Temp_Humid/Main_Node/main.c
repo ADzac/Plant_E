@@ -203,7 +203,7 @@ void PeriphCommonClock_Config(void)
 	*/
 	PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SMPS;
 	PeriphClkInitStruct.SmpsDivSelection = RCC_SMPSCLK_DIV4;
-	PeriphClkInitStruct.KRMRateMultiplier = 4;
+	PeriphClkInitStruct.KRMRateMultiplier = 4;s
 	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
 	{
 	  Error_Handler();
