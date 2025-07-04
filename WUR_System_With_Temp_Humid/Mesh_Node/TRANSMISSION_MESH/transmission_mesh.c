@@ -1,4 +1,3 @@
-
 /*
  * transmission_mesh.c
  *
@@ -6,18 +5,16 @@
  *  Created on: Jun 6, 2025
  *      Author: mzakri
  */
-
 #include "transmission_mesh.h"
 
 #define PAYLOAD_LEN 7
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
-uint8_t vectcTxBuff[15];
-uint8_t LPAWUR_Payload[8];
+uint8_t vectcTxBuff[15],LPAWUR_Payload[8];
 
-Packet txPacket;
-Packet rxPacket;
-PacketSignature packetCache[MAX_CACHE] = {0};
+Packet txPacket,rxPacket;
+
+SimpleCache myCache ;// Initialize as empty
 
 float temp = 0;
 float humid = 0;
@@ -25,122 +22,163 @@ float humid = 0;
 uint8_t UID[4];
 uint8_t myHop = 0;
 uint8_t myID = UNASSIGNED_ID;
-uint16_t rssi_min = -150;
-uint16_t rssi_max = 0;
 
-uint8_t datareqSent = 0;
+uint8_t datareqSent,hopper ;
 //----------------------------- Sensor ------------------------------------
 void TempANDHumidSensor() {
-    while (Si7021_Init() != HAL_OK) {
-        printf("Failed to initialize Si7021 sensor!\n\r");
-        BSP_LED_On(LED_RED);
-    }
+    while (Si7021_Init() != HAL_OK) BSP_LED_On(LED_RED);
 
     if (Si7021_ReadTempAndHumidity(&temp, &humid) == HAL_OK) {
-        printf("temp: %.2f°C, humid: %.2f \n\r", temp, humid);
-    } else {
-        printf("Error reading Si7021 sensor!\n\r");
-        BSP_LED_On(LED_RED);
+        printf("TEMP: %.2f°C, HUMID: %.2f \n\r", temp, humid);
+        temp = round(temp);
+        humid = round(humid);
     }
+    else BSP_LED_On(LED_RED);
 }
-
 //----------------------------- UID ------------------------------------
 void GETUID(uint8_t *uid) {
     uint32_t uid0 = LL_GetUID_Word0();
     uint32_t uid1 = LL_GetUID_Word1();
-    //printf("FIRST 32 BITS %X \r\n",uid0);
     uid[0] = (uid0 >> 24) & 0xFF;
     uid[1] = (uid0 >> 16) & 0xFF;
     uid[2] = (uid1 >> 8) & 0xFF;
     uid[3] = (uid1 >> 0) & 0xFF;
     printf("UID = %02X %02X %02X %02X\r\n", uid[0], uid[1], uid[2], uid[3]);
 }
-
+//----------------------------- PacketHandling ------------------------------------
 uint8_t isSelfPacket(Packet *pkt) {
-    return (pkt->ID == myID || (pkt->ID == UID[0] &&
-            (uint8_t)pkt->Payload[0] == UID[1] &&
-            (uint8_t)pkt->Payload[1] == UID[2] &&
-            pkt->Payload[2] == UID[3]));
+    return (pkt->ID == myID || (pkt->ID == UID[0] && (uint8_t)pkt->Payload[0] == UID[1] && (uint8_t)pkt->Payload[1] == UID[2]
+			&& pkt->Payload[2] == UID[3]) );
 }
 
 uint8_t shouldForward(Packet *pkt) {
-    // Don't forward self-generated packets
+    // Drop packet if it's from self
     if (isSelfPacket(pkt)) {
-        printf("Mine \r\n");
+        printf("Packet is from self.\r\n");
         return 0;
     }
-
-    // Check TTL first (if TTL is 0 or invalid, drop immediately)
-    if (pkt->Payload[3] <= 1) {  // TTL is about to expire (after decrement)
-        printf("TTL expired \r\n");
+    // Validate TTL before modifying it
+    uint8_t ttl = pkt->Payload[3];
+    if (ttl < 1) {
+        printf("TTL expired.\n\r");
         return 0;
     }
-
-    // Update packet metadata (hop count + TTL)
-    pkt->Payload[2]++;  // Increment hop count
-    pkt->Payload[3]--;  // Decrement TTL
-
-    // Forward the packet
     return 1;
 }
 
+void forwardPacket(uint8_t type) {
+    txPacket = rxPacket;
+    // Forward packet: increase hop count, decrease TTL
+    printf("REBROADCAST...\r\n");
+    txPacket.TransmissionType = type;
 
+    txPacket.Payload[2] += 1;  // Increment hop count
+
+   if (type != ID_ASSIGNMENT) txPacket.Payload[3] -= 1;  // Decrement TTL
+   SendPacket(vectcTxBuff);
+}
+
+uint8_t isDuplicate(Packet *pkt) {
+    // Expire cache after 5 minutes
+    if ((HAL_GetTick() - myCache.lastRxTime) > (5 * 60 * 1000)) myCache.lastSenderID = 0; // Force accept next packet
+
+    if (hopper == MAIN_NODE_ID) return 0;
+
+    // Check if same sender + type
+    if (myCache.lastSenderID == pkt->ID && myCache.lastTransType == pkt->TransmissionType) return 1;
+
+    // Update cache
+    myCache.lastSenderID = pkt->ID;
+    myCache.lastTransType = pkt->TransmissionType;
+    myCache.lastRxTime = HAL_GetTick();
+    return 0;
+}
+
+// Call this when:
+// 1. Starting new discovery and data req phase
+// 2. After long periods of inactivity
+// 3. On network reset commands
+void ResetCache(void) {
+    myCache.lastSenderID = 0;
+    myCache.lastTransType = 0xFF; // Invalid value
+    myCache.lastRxTime = 0;
+}
+
+void PrepareDiscoveryResponse(Packet *Pack) {
+    GETUID(UID);  // Fills UID with 4 values
+
+    Pack->TransmissionType = DISCOVERY_RESP;
+    Pack->ID = UID[0];
+    Pack->Destination = UID[1];
+    Pack->Payload[0] = UID[2];
+    Pack->Payload[1] = UID[3];
+    Pack->Payload[2] = rxPacket.Payload[2];
+    Pack->Payload[3] = 5;
+    HAL_Delay(100);
+    SendPacket(vectcTxBuff);
+}
+
+void SendAckALIVE(Packet *Pack) {
+    Pack->TransmissionType = ID_RECEIVED;
+    Pack->ID = myID;
+    Pack->Destination = MAIN_NODE_ID;
+    Pack->Payload[0] = 0;
+    Pack->Payload[1] = 0;
+    Pack->Payload[2] = 0;
+    Pack->Payload[3] = 5;
+    HAL_Delay(100);
+    SendPacket(vectcTxBuff);
+}
 //----------------------------- TX ------------------------------------
 /*
  * Randomize the delay before sending the Packet
  */
-uint16_t SimpleRand16(void)
+void SimpleRand16(void)
 {
-    uint16_t* val = malloc(sizeof(uint16_t));
-    if (val == NULL) {
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
-    *val = LL_RNG_ReadRandData16(RNG);  // replace NULL with RNG if available
-
-//    printf("Original value: %u \r\n", *val);  // use %u for uint16_t
-    switch(myHop){ //Hopcount
-		case (0):
-			*val = *val/15;
+	uint16_t val = LL_RNG_ReadRandData16(RNG);
+	switch (myHop) {
+		case 0:
+			val /= 32;
+			if(val < 200) val +=200;
 			break;
-		case (1):
-			*val = *val/10; // /8
+		case 1:
+			val /= 16;
+			if(val < 2000) val +=2000;
 			break;
-		case (2):
-			*val = *val/8;
+		case 2:
+			val /= 8;
+			if(val < 4000) val +=4000;
 			break;
-		case (3):
-			*val = *val/6; // /4
+		case 3:
+			val /= 6;
+			if(val < 8000) val +=8000;
 			break;
-		case(4):
-			*val = *val/4; // /2
+		case 4:
+			val /= 4;
+			if(val < 1000) val +=10000;
 			break;
-		default :
+		default:
+			val /= 2;
+			if(val < 16000) val +=16000;
 			break;
-			*val = *val/2;
-    }
-    // Perform right-shift on value, not pointer
-
-
-    printf("Shifted value: %u \r\n", *val);
-    HAL_Delay(*val);
-    free(val);
-    return 0;
+	}
+	printf("Random Delay: %d\r\n", val);
+	HAL_Delay(val);
 }
 
-void RandomNumbersGeneration(uint8_t j, uint8_t* vectcTxBuff) {
-    CreateLPAWURFrameV2(j, vectcTxBuff);
+void SendPacket(uint8_t* vectcTxBuff) {
+    CreateLPAWURFrameV2(vectcTxBuff);
     SimpleRand16();
     MX_APPE_Process();
 }
 
-void CreateLPAWURFrameV2(uint8_t j, uint8_t* vectcTxBuff) {
+void CreateLPAWURFrameV2(uint8_t* vectcTxBuff) {
     for (int i = 0; i < 5; i++) vectcTxBuff[i] = 0x00;
     vectcTxBuff[5] = 0x99;
 
     vectcTxBuff[6]  = (txPacket.TransmissionType << 4) | (myID & 0x0F);
-    vectcTxBuff[7]  = txPacket.ID;
+    if (txPacket.TransmissionType == (DISCOVERY_RESP || ID_ASSIGNMENT)) vectcTxBuff[7] = txPacket.ID;
+    else vectcTxBuff[7]  = (myID != UNASSIGNED_ID) ? myID : txPacket.ID;
     vectcTxBuff[8]  = txPacket.Destination;
     vectcTxBuff[9]  = txPacket.Payload[0];
     vectcTxBuff[10] = txPacket.Payload[1];
@@ -156,18 +194,7 @@ void MX_APPE_Process(void) {
     while((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {}
     __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
     BSP_LED_Off(LD3);
-
 }
-uint8_t PackMinimal() {
-	temp = (uint8_t)round((temp));  // Mask to 4 bits
-
-	// Scale humidity to 4 bits (0-100% in 6.67% steps)
-	humid = (uint8_t)round((humid));  // Mask to 4 bits
-
-	// Combine: Temp in upper 4 bits, Humidity in lower 4 bits
-	return 0;// (t << 4) | h;
-}
-
 //----------------------------- RX ------------------------------------
 void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* pkt) {
     pkt->TransmissionType = LPAWUR_Pay[0];
@@ -179,7 +206,7 @@ void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* pkt) {
     pkt->Payload[3] = LPAWUR_Pay[6];
 }
 
-void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
+void GotoRx(uint8_t* vectcTxBuff) {
     HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_LPAWUR, PWR_WUP_RISIEDG);
     uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
 
@@ -188,131 +215,82 @@ void GotoRx(uint8_t* PR, uint8_t* vectcTxBuff) {
         HAL_LPAWUR_GetPayload(LPAWUR_Payload);
         PacketHandler(LPAWUR_Payload, &rxPacket);
         uint8_t transType = (rxPacket.TransmissionType >> 4) & 0x0F;
-        uint8_t hopper = rxPacket.TransmissionType & 0x0F;
+        hopper = rxPacket.ID;
         if (hopper != 0) printf("Received from a hopper ID %d \r\n",hopper);
 
+        if (isDuplicate(&rxPacket) == 0){
 
-        switch (transType) {
-        case DISCOVERY_REQ:
-			printf("DISCOVERY_REQ received\n\r");
+			switch (transType) {
+				case DISCOVERY_REQ:
+					printf("DISCOVERY_REQ received\n\r");
+					ResetCache();
 
-			// Rebroadcast discovery
-			if (rxPacket.Payload[3] > 2 && shouldForward(&rxPacket)  && datareqSent == 0) {
-				txPacket = rxPacket;
-				myHop = (uint8_t)txPacket.Payload[2];
-				printf("Rebroadcasting  \r\n");
-				txPacket.TransmissionType = DISCOVERY_REQ;
-				txPacket.Payload[2] += 1;
-				txPacket.Payload[3] -= 1;
-				datareqSent = 1;
-				RandomNumbersGeneration(10, vectcTxBuff);
-			}
+					if (rxPacket.Payload[3] > 2 && shouldForward(&rxPacket)  && datareqSent == 0) {
+						myHop = (uint8_t)txPacket.Payload[2];
+						datareqSent = 1;
+						printf("Im this amount of hop to main : %d \n\r",myHop);
+						forwardPacket(DISCOVERY_REQ);
+					}
 
-			// Respond to main if unassigned
-			if (myID == UNASSIGNED_ID) {
-				GETUID(UID);
-				txPacket.TransmissionType = DISCOVERY_RESP;
-				txPacket.ID = UID[0];
-				txPacket.Destination = UID[1];
-				txPacket.Payload[0] = UID[2];
-				txPacket.Payload[1] = UID[3];
-				txPacket.Payload[2] = rxPacket.Payload[2];
-				txPacket.Payload[3] = 5;
-				printf("Asking for ID \r\n");
-				HAL_Delay(100);
-				RandomNumbersGeneration(10, vectcTxBuff);
-			}
-			break;
-
-            case DISCOVERY_RESP:
-                if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
-                    txPacket = rxPacket;
-                    printf("Rebroadcasting  \r\n");
-                    txPacket.TransmissionType = DISCOVERY_RESP;
-                    txPacket.Payload[2] += 1;
-                    txPacket.Payload[3] -= 1;
-                    RandomNumbersGeneration(10, vectcTxBuff);
-                }
-                break;
-
-            case DATAREQ:
-
-				if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket) && datareqSent == 0) {
-					txPacket = rxPacket;
-					printf("Rebroadcasting  \r\n");
-					txPacket.TransmissionType = DATAREQ;
-					txPacket.Payload[2] += 1;
-					txPacket.Payload[3] -= 1;
-					datareqSent = 1;
-					RandomNumbersGeneration(10, vectcTxBuff);
-				}
-				HAL_Delay(100);
-				TempANDHumidSensor();
-				PackMinimal();
-				txPacket.TransmissionType = DATAREP;
-				txPacket.ID = myID;
-				txPacket.Destination = MAIN_NODE_ID;
-				txPacket.Payload[0] = temp;
-				txPacket.Payload[1] = humid;
-				txPacket.Payload[2] = 0;
-				txPacket.Payload[3] = 5;
-				RandomNumbersGeneration(10, vectcTxBuff);
-
+					if (myID == UNASSIGNED_ID) PrepareDiscoveryResponse(&txPacket);
+					else SendAckALIVE(&txPacket);
 				break;
 
-            case DATAREP:
-                if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
-                	printf("DataREP received \r\n");
-                    txPacket = rxPacket;
-                    printf("Rebroadcasting  \r\n");
-                    TempANDHumidSensor();
-                    if (abs(temp -txPacket.Payload[0])>10){
-                    	txPacket.TransmissionType = ALERT;
-                    	//txPacket.Payload[1] = "High Temp \a\n";
-                    }
-                    else{
-                    	txPacket.TransmissionType = DATAREP;
-                    }
-                    txPacket.Payload[2] += 1;
-                    txPacket.Payload[3] -= 1;
-                    RandomNumbersGeneration(10, vectcTxBuff);
-                }
-                break;
+				case DISCOVERY_RESP:
+					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) forwardPacket(DISCOVERY_RESP);
+				break;
 
+				case DATAREQ:
+					ResetCache();
+					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket) && datareqSent == 0) {
+						forwardPacket(DATAREQ);
+						datareqSent = 1;
+					}
+					HAL_Delay(100);
+					TempANDHumidSensor();
+					txPacket.TransmissionType = DATAREP;
+					txPacket.ID = myID;
+					txPacket.Destination = MAIN_NODE_ID;
+					txPacket.Payload[0] = temp;
+					txPacket.Payload[1] = humid;
+					txPacket.Payload[2] = 0;
+					txPacket.Payload[3] = 5;
+					SendPacket(vectcTxBuff);
+				break;
 
-            case ID_ASSIGNMENT:
-                if (rxPacket.ID == UID[0] && rxPacket.Destination == UID[1] &&
-                    rxPacket.Payload[0] == UID[2] &&
-                    rxPacket.Payload[1] == UID[3]
-                    ) {
-                	if (myID == UNASSIGNED_ID){
-                		myID = rxPacket.Payload[3];
-                		printf("ID assigned: %d\n\r", myID);
-                	}
+				case DATAREP:
+					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
+						printf("DataREP received \r\n");
+						TempANDHumidSensor();
 
-                } else if (shouldForward(&rxPacket)) {
-                    txPacket = rxPacket;
-                    printf("Rebroadcasting  \r\n");
-                    txPacket.Payload[2] += 1;
-                    RandomNumbersGeneration(10, vectcTxBuff);
-                }
-                break;
+						if (abs(temp -txPacket.Payload[0])>10) forwardPacket(ALERT);
+						else forwardPacket(DATAREP);
+					}
+				break;
 
+				case ID_ASSIGNMENT:
+					printf("ID_ASS received \r\n");
+					if (rxPacket.ID == UID[0] && rxPacket.Destination == UID[1] && rxPacket.Payload[0] == UID[2] &&
+					rxPacket.Payload[1] == UID[3]) {
+						if (myID == UNASSIGNED_ID){
+							myID = rxPacket.Payload[3];
+							printf("ID assigned: %d\n\r", myID);
+						}
+					}
+					else if (shouldForward(&rxPacket)) forwardPacket(ID_ASSIGNMENT);
+				break;
 
-            case ALERT :
-            	txPacket = rxPacket;
-                RandomNumbersGeneration(10, vectcTxBuff);
+				case ALERT :
+					txPacket = rxPacket;
+					SendPacket(vectcTxBuff);
+				break;
 
-            	break;
-
-            default:
-                printf("Unknown transmission type: %d\n\r", rxPacket.TransmissionType);
-                break;
+				default:
+				break;
+			}
         }
-
         HAL_LPAWUR_ClearStatus();
         LL_LPAWUR_SetState(ENABLE);
-        printf("Finish \r\n");
         HAL_Delay(100);
         BSP_LED_Off(LD2);
     }
@@ -365,13 +343,5 @@ if(app_powerSave_level != POWER_SAVE_LEVEL_DISABLED)
   UTIL_LPM_EnterLowPower();
 }
 #endif /* CFG_LPM_SUPPORTED */
-}
-
-void UpdateRssiStats(int16_t rssi, int print_stats)
-{
-	  rssi_min = (rssi < rssi_min) ? rssi : rssi_min;
-	  rssi_max = (rssi > rssi_max) ? rssi : rssi_max;
-	  if (print_stats == 1)
-	  {printf("Current RSSI: %d dBm | MIN : %d dBm | MAX : %d dBm\r\n", rssi, rssi_min, rssi_max);}
 }
 //---------------------------------------------------------------------------------------------------
