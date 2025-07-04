@@ -28,47 +28,55 @@
 #define DISCOVERY_REQ 0
 #define DISCOVERY_RESP 1
 #define ID_ASSIGNMENT 2
-#define DATAREQ 3
-#define DATAREP 4
+#define ID_RECEIVED 3
+#define DATAREQ 4
+#define DATAREP 5
 
-#define ALERT 5
+#define ALERT 10
 
 #define MAIN_NODE_ID 0
 #define UNASSIGNED_ID 254
 #define MAX_CACHE 10
 
 typedef struct {
-    uint8_t valid;
-    uint8_t sender;
-    uint8_t transType;
-    uint8_t temp;
-    uint8_t humid;
-    uint8_t hop;
+	uint8_t senderID;     // Who sent this?
+	uint8_t packetType;   // DISCOVERY_REQ, DATAREP, etc.
+	uint8_t seqNum;       // Optional: Sequence number (if available)
+	uint32_t timestamp;
 } PacketSignature;
 
+typedef struct {
+    uint8_t lastSenderID;      // Who sent the last DISCOVERY/DATAREQ?
+    uint8_t lastTransType;     // Was it DISCOVERY_REQ (0) or DATAREQ (3)?
+    uint32_t lastRxTime;       // When was it received?
+} SimpleCache;
 
 typedef struct {
     uint8_t TransmissionType;
     uint8_t ID;
-    uint8_t Destination; //only for first discovery
-    uint8_t UID[4];
+    uint8_t Destination; //only for missing node , hop for other node
     uint8_t Payload[4]; // only for first discovery than can be use for something else i.e. TTL
 } Packet;
 
 // Add these function prototypes
 void ProcessDiscoveryPacket(Packet* rxPacket);
 void SendDiscoveryResponse(uint8_t j, uint8_t* vectcTxBuff);
+void PrepareDiscoveryResponse(Packet *Pack);
+void SendAckALIVE(Packet *Pack);
 
-void CreateLPAWURFrameV2(uint8_t j, uint8_t* vectcTxBuff);
-void RandomNumbersGeneration(uint8_t j,uint8_t* vectcTxBuff);
+void CreateLPAWURFrameV2(uint8_t* vectcTxBuff);
+void SendPacket(uint8_t* vectcTxBuff);
 void MX_APPE_Process(void);
-void UpdateRssiStats(int16_t rssi, int print_stats);
-void GotoRx(uint8_t* PR,uint8_t* vectcTxBuff);
+void GotoRx(uint8_t* vectcTxBuff);
 void MX_APPE_Idle(void);
 void GETUID(uint8_t *uid);
+void forwardPacket(uint8_t type);
+uint8_t isDuplicate(Packet *pkt);
+void ResetCache(void) ;
 
 extern uint8_t UID[4];
-extern Packet txPacket;
+
+extern SimpleCache myCache;
 extern uint8_t vectcTxBuff[15];
 extern PacketSignature packetCache[MAX_CACHE];
 extern uint8_t datareqSent;
