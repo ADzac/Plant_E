@@ -85,13 +85,12 @@ uint8_t compareUIDs(uint8_t *uid1, uint8_t *uid2) ;
 int8_t getAssignedID(uint8_t *uid);
 uint8_t assignIDToUID(uint8_t *uid) ;
 void AddToIDList(uint8_t id);
+void SendToDataBase(void);
 
 extern Packet txPacket;
 extern Packet rxPacket;
 extern uint8_t vectcTxBuff[15];
 extern uint8_t alreadyReceived;
-
-
 
 extern uint8_t IDList[255];  // Start with all zeros
 extern uint8_t IDListSize;
