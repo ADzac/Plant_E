@@ -20,7 +20,7 @@ float temp = 0;
 float humid = 0;
 
 uint8_t UID[4];
-uint8_t myHop = 0;
+uint8_t myHop = 10;
 uint8_t myID = UNASSIGNED_ID;
 
 uint8_t datareqSent,hopper ;
@@ -275,6 +275,7 @@ void GotoRx(uint8_t* vectcTxBuff) {
 						if (myID == UNASSIGNED_ID){
 							myID = rxPacket.Payload[3];
 							printf("ID assigned: %d\n\r", myID);
+							SendAckALIVE(&txPacket);
 						}
 					}
 					else if (shouldForward(&rxPacket)) forwardPacket(ID_ASSIGNMENT);
