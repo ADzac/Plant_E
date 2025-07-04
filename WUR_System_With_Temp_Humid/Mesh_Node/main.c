@@ -1,15 +1,12 @@
 
+/*
+ * main.c
+ *
+ *  Created on: Jun 6, 2025
+ *      Author: mzakri
+ */
+
 #include "main.h"
-
-
-uint8_t vectcTxBuffV2[15];
-
-uint8_t mode = 1; // RX = 1 , TX = 0
-uint8_t packet_Received = 0;
-
-float temperature=0;
-float humidity = 0;
-
 
 SMRSubGConfig MRSUBG_RadioInitStruct;
 MRSubG_PcktBasicFields MRSUBG_PacketSettingsStruct;
@@ -42,20 +39,16 @@ int main(void)
 	UTIL_LPM_Init();
 	MX_RNG_Init();
 	RX_TX_Init();
-	GETUID(UID); // Ensure UID is populated
-
-//	Packet myPacket;
-	for (int i = 0; i < MAX_CACHE; i++) {
-	    packetCache[i].valid = 0;
-	}
-
-
+	GETUID(UID);
+	myCache.lastSenderID = 255;
+	myCache.lastTransType = 255;
+	myCache.lastRxTime = 0;
 
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
 	while (1)
 	{
-		GotoRx(&packet_Received,vectcTxBuff);
+		GotoRx(vectcTxBuff);
 		MX_APPE_Idle();
 		datareqSent = 0;
 	}
