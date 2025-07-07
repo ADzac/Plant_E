@@ -242,9 +242,8 @@ void GotoRx(uint8_t* vectcTxBuff) {
 
 				case DATAREQ:
 					ResetCache();
-					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket) && datareqSent == 0) {
+					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
 						forwardPacket(DATAREQ);
-						datareqSent = 1;
 					}
 					HAL_Delay(100);
 					TempANDHumidSensor();
