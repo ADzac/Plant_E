@@ -1,6 +1,6 @@
 #include "main.h"
 
-#define WAKEUP_TIMEOUT 30000 // 10 seconds
+#define WAKEUP_TIMEOUT 60000 // 10 seconds
 
 uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY_REQ;
@@ -13,6 +13,10 @@ uint8_t packet_Received = 0;
 
 float temperature=0;
 float humidity = 0;
+
+// Global scope
+int startTimeout;  // Just declare
+
 
 Packet myPacket;
 
@@ -77,6 +81,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     mode = 0;
 
    init_data_storage();
+   startTimeout = HAL_GetTick();
 
    if (wakeup_counter >= 24) {
 	   TYPE = DISCOVERY_REQ;
@@ -203,7 +208,7 @@ void PeriphCommonClock_Config(void)
 	*/
 	PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SMPS;
 	PeriphClkInitStruct.SmpsDivSelection = RCC_SMPSCLK_DIV4;
-	PeriphClkInitStruct.KRMRateMultiplier = 4;s
+	PeriphClkInitStruct.KRMRateMultiplier = 4;
 	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
 	{
 	  Error_Handler();
