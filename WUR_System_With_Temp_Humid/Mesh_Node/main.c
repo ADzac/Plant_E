@@ -43,14 +43,14 @@ int main(void)
 	myCache.lastSenderID = 255;
 	myCache.lastTransType = 255;
 	myCache.lastRxTime = 0;
-
+	datareqSent = 0;
 	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
 
 	while (1)
 	{
 		GotoRx(vectcTxBuff);
 		MX_APPE_Idle();
-		datareqSent = 0;
+
 	}
 }
 
