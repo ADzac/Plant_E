@@ -56,16 +56,16 @@ typedef struct {
 
 typedef struct {
     uint8_t nodeID;
-    float temperature;
-    float humidity;
+    uint8_t temperature;
+    uint8_t humidity;
     float battery;
 } SensorData;
 
 // Structure to track received data reports
 typedef struct {
     uint8_t id;
-    float temp;
-    float humid;
+    uint8_t temp;
+    uint8_t humid;
     uint8_t received;  // Flag to indicate if we've received data from this ID
 } DataReport;
 
@@ -91,6 +91,7 @@ extern Packet txPacket;
 extern Packet rxPacket;
 extern uint8_t vectcTxBuff[15];
 extern uint8_t alreadyReceived;
+extern uint8_t firstResponseTime;
 
 extern uint8_t IDList[255];  // Start with all zeros
 extern uint8_t IDListSize;
