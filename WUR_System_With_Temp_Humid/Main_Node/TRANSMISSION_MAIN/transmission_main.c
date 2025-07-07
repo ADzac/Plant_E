@@ -13,8 +13,8 @@ uint8_t vectcTxBuff[15],LPAWUR_Payload[8];
 
 uint8_t ID = 1;
 uint8_t checkForID = 5;
-uint8_t IDList[255] = {254} ;
-uint8_t IDListSize = 1;  // Track how many IDs are in the list
+uint8_t IDList[255];
+uint8_t IDListSize = 0;  // Track how many IDs are in the list
 uint8_t alreadyReceived;
 
 int16_t rssi = 0;
@@ -32,6 +32,9 @@ uint8_t nodeCount = 0;
 uint8_t uid[4],assignedID;
 uint8_t SendDatabase = 0;
 
+uint8_t firstResponseTime;
+
+
 static DataReport receivedData[MAX_NODES];
 static uint8_t receivedDataCount;
 //----------------------------- Data Storage  ------------------------------------
@@ -40,6 +43,7 @@ void init_data_storage(void) {
     receivedDataCount = 0;
     alreadyReceived = 0;
     SendDatabase = 0;
+    firstResponseTime = 0;
 }
 
 //----------------------------- ID Handler ------------------------------------
@@ -153,14 +157,20 @@ void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
     txPacket.Payload[3] = assignedID;
 
     CreateLPAWURFrameV2();  // Your custom packet creation logic
-    HAL_Delay(500);         // Wait 500 ms
-    HAL_Delay(HAL_GetTick() % 1000);  // Add some jitter
+    HAL_Delay(5);         // Wait 5 ms
     MX_APPE_Process();      // Continue processing (maybe RF stack-related)
 }
 
 void SendToDataBase(void){
 	if (SendDatabase == 0){
 		printf("Sending to DB \n\r");
+		for (int i = 1; i < IDListSize+1; i++) {
+		        if (receivedData[i].received) {
+		            printf("%x,%d,%d \n\r", receivedData[i].id, receivedData[i].temp, receivedData[i].humid);
+		        } else {
+		            printf("%x,N/A,N/A\n\r", i);  // Mark missing node
+		        }
+		    }
 		SendDatabase = 1;
 	}
 }
@@ -170,7 +180,7 @@ void SendPacket() {
     uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
     if (wakeupSource & PWR_WAKEUP_RTC) {
         CreateLPAWURFrameV2();
-        HAL_Delay(1000);
+        HAL_Delay(100);
         MX_APPE_Process();
         printf("Packet sent \r\n");
     }
@@ -234,7 +244,7 @@ void GotoRx(uint8_t* PR) {
 					txPacket.Payload[2] = 0;
 					txPacket.Payload[3] = 5;
 					CreateLPAWURFrameV2();
-					HAL_Delay(200);
+					HAL_Delay(5);
 					MX_APPE_Process();
 					printf("Packet sent \r\n");
             	}
@@ -243,6 +253,12 @@ void GotoRx(uint8_t* PR) {
             			if (knownNodes[c].assignedID == rxPacket.ID) AddToIDList(rxPacket.ID);
             		}
             	}
+
+            	//Start counting packet
+            	if (receivedDataCount == 0) {
+            	        firstResponseTime = HAL_GetTick();  // Set on first packet
+            	    }
+
             	if (IsInIDList(rxPacket.ID)== 1) {
                 	    if (receivedData[rxPacket.ID].received == 1) {
                 	        //printf("Dropping duplicate DATAREP from ID %d\n\r", rxPacket.ID);
@@ -256,10 +272,6 @@ void GotoRx(uint8_t* PR) {
                 	               rxPacket.ID, rxPacket.Payload[0], rxPacket.Payload[1]);
                 	    }
                 }
-                else {
-                    //printf("Dropping DATAREP from unknown ID %d\n\r", rxPacket.ID);
-                }
-
                 if (receivedDataCount == IDListSize) SendToDataBase();
                 break;
 
@@ -283,7 +295,7 @@ void GotoRx(uint8_t* PR) {
 
         HAL_LPAWUR_ClearStatus();
         LL_LPAWUR_SetState(ENABLE);
-        HAL_Delay(100);
+        HAL_Delay(5);
         BSP_LED_Off(LD2);
     }
 }
