@@ -24,6 +24,8 @@ uint8_t myHop = 10;
 uint8_t myID = UNASSIGNED_ID;
 
 uint8_t datareqSent,hopper ;
+
+RoutingEntry routingTable[MAX_ROUTES];
 //----------------------------- Sensor ------------------------------------
 void TempANDHumidSensor() {
     while (Si7021_Init() != HAL_OK) BSP_LED_On(LED_RED);
@@ -51,27 +53,81 @@ uint8_t isSelfPacket(Packet *pkt) {
 			&& pkt->Payload[2] == UID[3]) );
 }
 
+void InitRoutingTable(void) {
+    for (int i = 0; i < MAX_ROUTES; i++) {
+        routingTable[i].nodeID = UNASSIGNED_ID;
+        routingTable[i].nextHop = 0;
+        routingTable[i].hopCount = 255; // max hop means undefined
+        routingTable[i].lastSeen = 0;
+    }
+}
+
+void UpdateRoutingTable(uint8_t nodeID, uint8_t nextHop, uint8_t hopCount) {
+    // Accept only direct neighbors (hop count 0 or 1)
+    if (hopCount > 1 || nodeID == myID)  {
+        return; // Ignore non-direct nodes
+    }
+
+    // Check if the node is already in the table
+    for (int i = 0; i < MAX_ROUTES; i++) {
+        if (routingTable[i].nodeID == nodeID) {
+            // Update if hop count is better or same next hop
+            if (hopCount <= routingTable[i].hopCount || routingTable[i].nextHop == nextHop) {
+                routingTable[i].nextHop = nextHop;
+                routingTable[i].hopCount = hopCount;
+            }
+            return;
+        }
+    }
+
+    // Insert into empty slot
+    for (int i = 0; i < MAX_ROUTES; i++) {
+        if (routingTable[i].nodeID == UNASSIGNED_ID) {
+            routingTable[i].nodeID = nodeID;
+            routingTable[i].nextHop = nextHop;
+            routingTable[i].hopCount = hopCount;
+            return;
+        }
+    }
+
+    // Table full, you could log or evict oldest entry
+    printf("Routing table full. Could not add node %d\n", nodeID);
+}
+
+void printRoutingTable(void) {
+    printf("=== Routing Table ===\r\n");
+
+    for (int i = 0; i < MAX_ROUTES; i++) {
+		printf("Slot %d: NodeID: %u | NextHop: %u | Hops: %u\r\n",
+			   i,
+			   routingTable[i].nodeID,
+			   routingTable[i].nextHop,
+			   routingTable[i].hopCount);
+    }
+
+    printf("======================\r\n");
+}
+
+
 uint8_t shouldForward(Packet *pkt) {
     // Drop packet if it's from self
     if (isSelfPacket(pkt)) {
-        printf("Packet is from self.\r\n");
         return 0;
     }
     // Validate TTL before modifying it
     uint8_t ttl = pkt->Payload[3];
     if (ttl < 1) {
-        printf("TTL expired.\n\r");
         return 0;
     }
     return 1;
 }
 
 void forwardPacket(uint8_t type) {
-    txPacket = rxPacket;
+	memcpy(&txPacket, &rxPacket, sizeof(Packet)); // current
     // Forward packet: increase hop count, decrease TTL
     printf("REBROADCAST...\r\n");
     txPacket.TransmissionType = type;
-
+    if (type != ID_ASSIGNMENT && type != DISCOVERY_RESP) txPacket.Destination = myID;  // rxPacket.ID is the original sender ,the current hopper
     txPacket.Payload[2] += 1;  // Increment hop count
 
    if (type != ID_ASSIGNMENT) txPacket.Payload[3] -= 1;  // Decrement TTL
@@ -105,8 +161,6 @@ void ResetCache(void) {
 }
 
 void PrepareDiscoveryResponse(Packet *Pack) {
-    GETUID(UID);  // Fills UID with 4 values
-
     Pack->TransmissionType = DISCOVERY_RESP;
     Pack->ID = UID[0];
     Pack->Destination = UID[1];
@@ -114,7 +168,6 @@ void PrepareDiscoveryResponse(Packet *Pack) {
     Pack->Payload[1] = UID[3];
     Pack->Payload[2] = rxPacket.Payload[2];
     Pack->Payload[3] = 5;
-    HAL_Delay(100);
     SendPacket(vectcTxBuff);
 }
 
@@ -126,7 +179,6 @@ void SendAckALIVE(Packet *Pack) {
     Pack->Payload[1] = 0;
     Pack->Payload[2] = 0;
     Pack->Payload[3] = 5;
-    HAL_Delay(100);
     SendPacket(vectcTxBuff);
 }
 //----------------------------- TX ------------------------------------
@@ -160,6 +212,7 @@ void SimpleRand16(void)
 		default:
 			val /= 2;
 			if(val < 16000) val +=16000;
+			if (val > 20000) val = 20000 + LL_RNG_ReadRandData16(RNG)/32;
 			break;
 	}
 	printf("Random Delay: %d\r\n", val);
@@ -177,8 +230,10 @@ void CreateLPAWURFrameV2(uint8_t* vectcTxBuff) {
     vectcTxBuff[5] = 0x99;
 
     vectcTxBuff[6]  = (txPacket.TransmissionType << 4) | (myID & 0x0F);
-    if (txPacket.TransmissionType == (DISCOVERY_RESP || ID_ASSIGNMENT)) vectcTxBuff[7] = txPacket.ID;
+    if (txPacket.TransmissionType == DISCOVERY_RESP || txPacket.TransmissionType == ID_ASSIGNMENT ||
+        txPacket.TransmissionType == DATAREP) vectcTxBuff[7] = txPacket.ID;
     else vectcTxBuff[7]  = (myID != UNASSIGNED_ID) ? myID : txPacket.ID;
+
     vectcTxBuff[8]  = txPacket.Destination;
     vectcTxBuff[9]  = txPacket.Payload[0];
     vectcTxBuff[10] = txPacket.Payload[1];
@@ -189,11 +244,11 @@ void CreateLPAWURFrameV2(uint8_t* vectcTxBuff) {
 }
 
 void MX_APPE_Process(void) {
-    BSP_LED_On(LD3);
+    //BSP_LED_On(LD3);
     __HAL_MRSUBG_STROBE_CMD(CMD_TX);
     while((__HAL_MRSUBG_GET_RFSEQ_IRQ_STATUS() & MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F) == 0) {}
     __HAL_MRSUBG_CLEAR_RFSEQ_IRQ_FLAG(MR_SUBG_GLOB_STATUS_RFSEQ_IRQ_STATUS_TX_DONE_F);
-    BSP_LED_Off(LD3);
+    //BSP_LED_Off(LD3);
 }
 //----------------------------- RX ------------------------------------
 void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* pkt) {
@@ -211,13 +266,21 @@ void GotoRx(uint8_t* vectcTxBuff) {
     uint32_t wakeupSource = HAL_PWREx_GetClearInternalWakeUpLine();
 
     if (wakeupSource & PWR_WAKEUP_LPAWUR) {
-        BSP_LED_On(LD2);
+        //BSP_LED_On(LD2);
         HAL_LPAWUR_GetPayload(LPAWUR_Payload);
         PacketHandler(LPAWUR_Payload, &rxPacket);
         uint8_t transType = (rxPacket.TransmissionType >> 4) & 0x0F;
-        hopper = rxPacket.ID;
+        if (transType != ID_ASSIGNMENT) hopper = rxPacket.ID;
         if (hopper != 0) printf("Received from a hopper ID %d \r\n",hopper);
 
+        if (transType != ID_ASSIGNMENT  && transType != ALERT  && transType != DISCOVERY_RESP){
+        	printf("%d \n\r",transType);
+        	printf("%d \n\r",rxPacket.Destination);
+			UpdateRoutingTable(hopper, rxPacket.Destination, rxPacket.Payload[2]);
+			printRoutingTable();
+        }
+
+		if (myHop > 6 && rxPacket.ID == MAIN_NODE_ID) myHop = rxPacket.Payload[2];
         if (isDuplicate(&rxPacket) == 0){
 
 			switch (transType) {
@@ -226,7 +289,7 @@ void GotoRx(uint8_t* vectcTxBuff) {
 					ResetCache();
 
 					if (rxPacket.Payload[3] > 2 && shouldForward(&rxPacket)  && datareqSent == 0) {
-						myHop = (uint8_t)txPacket.Payload[2];
+						myHop = (uint8_t)rxPacket.Payload[2];
 						datareqSent = 1;
 						printf("Im this amount of hop to main : %d \n\r",myHop);
 						forwardPacket(DISCOVERY_REQ);
@@ -245,11 +308,15 @@ void GotoRx(uint8_t* vectcTxBuff) {
 					if (rxPacket.Payload[3] > 0 && shouldForward(&rxPacket)) {
 						forwardPacket(DATAREQ);
 					}
-					HAL_Delay(100);
+					if (myID == UNASSIGNED_ID){
+						PrepareDiscoveryResponse(&txPacket);
+						break;
+					}
+					HAL_Delay(10);
 					TempANDHumidSensor();
 					txPacket.TransmissionType = DATAREP;
 					txPacket.ID = myID;
-					txPacket.Destination = MAIN_NODE_ID;
+					txPacket.Destination = myID; //for hop routing cases
 					txPacket.Payload[0] = temp;
 					txPacket.Payload[1] = humid;
 					txPacket.Payload[2] = 0;
@@ -262,7 +329,7 @@ void GotoRx(uint8_t* vectcTxBuff) {
 						printf("DataREP received \r\n");
 						TempANDHumidSensor();
 
-						if (abs(temp -txPacket.Payload[0])>10) forwardPacket(ALERT);
+						if (abs(temp -rxPacket.Payload[0])>10) forwardPacket(ALERT);
 						else forwardPacket(DATAREP);
 					}
 				break;
@@ -281,7 +348,7 @@ void GotoRx(uint8_t* vectcTxBuff) {
 				break;
 
 				case ALERT :
-					txPacket = rxPacket;
+					memcpy(&txPacket, &rxPacket, sizeof(Packet));
 					SendPacket(vectcTxBuff);
 				break;
 
@@ -291,8 +358,7 @@ void GotoRx(uint8_t* vectcTxBuff) {
         }
         HAL_LPAWUR_ClearStatus();
         LL_LPAWUR_SetState(ENABLE);
-        HAL_Delay(100);
-        BSP_LED_Off(LD2);
+        //BSP_LED_Off(LD2);
     }
 }
 
