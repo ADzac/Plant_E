@@ -40,6 +40,7 @@ int main(void)
 	MX_RNG_Init();
 	RX_TX_Init();
 	GETUID(UID);
+	InitRoutingTable();
 	myCache.lastSenderID = 255;
 	myCache.lastTransType = 255;
 	myCache.lastRxTime = 0;
