@@ -55,8 +55,18 @@ typedef struct {
     uint8_t TransmissionType;
     uint8_t ID;
     uint8_t Destination; //only for missing node , hop for other node
-    uint8_t Payload[4]; // only for first discovery than can be use for something else i.e. TTL
+    uint8_t Payload[4]; // only for first discovery than can be use for something else i.e. TTL "2" for hop "3" for TTL
 } Packet;
+
+#define MAX_ROUTES 10
+
+typedef struct {
+    uint8_t nodeID;
+    uint8_t nextHop;
+    uint8_t hopCount;
+    uint32_t lastSeen; // time in ms
+} RoutingEntry;
+
 
 // Add these function prototypes
 void ProcessDiscoveryPacket(Packet* rxPacket);
@@ -72,7 +82,10 @@ void MX_APPE_Idle(void);
 void GETUID(uint8_t *uid);
 void forwardPacket(uint8_t type);
 uint8_t isDuplicate(Packet *pkt);
+void InitRoutingTable(void);
 void ResetCache(void) ;
+void UpdateRoutingTable(uint8_t nodeID, uint8_t nextHop, uint8_t hopCount);
+void printRoutingTable(void) ;
 
 extern uint8_t UID[4];
 
@@ -80,4 +93,5 @@ extern SimpleCache myCache;
 extern uint8_t vectcTxBuff[15];
 extern PacketSignature packetCache[MAX_CACHE];
 extern uint8_t datareqSent;
+extern RoutingEntry routingTable[MAX_ROUTES];
 #endif
