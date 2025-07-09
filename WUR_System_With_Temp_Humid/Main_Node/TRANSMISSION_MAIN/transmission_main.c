@@ -193,8 +193,8 @@ void CreateLPAWURFrameV2() {
 
     vectcTxBuff[7]  = txPacket.ID;
     vectcTxBuff[8]  = txPacket.Destination;
-    vectcTxBuff[9]  = (uint8_t)round(txPacket.Payload[0]);
-    vectcTxBuff[10] = (uint8_t)round(txPacket.Payload[1]);
+    vectcTxBuff[9]  = txPacket.Payload[0];
+    vectcTxBuff[10] = txPacket.Payload[1];
     vectcTxBuff[11] = txPacket.Payload[2];
     vectcTxBuff[12] = txPacket.Payload[3];
     EvaluateCrc(&vectcTxBuff[6]);
@@ -261,17 +261,17 @@ void GotoRx(uint8_t* PR) {
 
             	if (IsInIDList(rxPacket.ID)== 1) {
                 	    if (receivedData[rxPacket.ID].received == 1) {
-                	        //printf("Dropping duplicate DATAREP from ID %d\n\r", rxPacket.ID);
-                	    } else {
-                	    	receivedData[rxPacket.ID].id = rxPacket.ID;
-                	        receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
-                	        receivedData[rxPacket.ID].humid = rxPacket.Payload[1];
-                	        receivedData[rxPacket.ID].received = 1;
-                	        receivedDataCount++;
+                	    } else if (rxPacket.ID < MAX_NODES) {
+                    	    	receivedData[rxPacket.ID].id = rxPacket.ID;
+                    	        receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
+                    	        receivedData[rxPacket.ID].humid = rxPacket.Payload[1];
+                	            receivedData[rxPacket.ID].received = 1;
+                    	        receivedDataCount++;
+
                 	        printf("DATAREP from %x: Temp = %d°C, Humid = %d%%\n\r",
                 	               rxPacket.ID, rxPacket.Payload[0], rxPacket.Payload[1]);
                 	    }
-                }
+                	}
                 if (receivedDataCount == IDListSize) SendToDataBase();
                 break;
 
