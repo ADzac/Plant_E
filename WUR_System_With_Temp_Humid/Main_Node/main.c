@@ -94,6 +94,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 
    wakeup_counter++;
    txPacket.ID = MAIN_NODE_ID;
+   txPacket.Destination = MAIN_NODE_ID;
    txPacket.TransmissionType = TYPE;
    txPacket.Payload[2] = 0;
    txPacket.Payload[3] = 5;
