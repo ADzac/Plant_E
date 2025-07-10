@@ -69,11 +69,10 @@ int main(void)
 			mode = 1;
 		}
 
-		// Handle data collection with timeout
-		HandleDataCollection();
-
 		// Handle incoming packets
 		GotoRx(&packet_Received);
+		// Handle data collection with timeout
+		HandleDataCollection();
 
 		// Enter low power mode
 		MX_APPE_Idle();
@@ -86,6 +85,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
     mode = 0;
 
+
     // Check if we're in middle of data collection
     if (collectionPhase == 1) {
         printf("RTC wakeup during data collection\n\r");
@@ -96,6 +96,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 		txPacket.Payload[3] = 5;
         return; // Don't start new cycle if collecting
     }
+    if (collectionPhase == 2) collectionPhase = 0;
 
     // Initialize data storage for new cycle
     init_data_storage();
@@ -107,6 +108,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
         BSP_LED_Toggle(LD3);
         wakeup_counter = 1;
     } else {
+        retryCount = 0;
         TYPE = DATAREQ;
         BSP_LED_Toggle(LD1);
     }
