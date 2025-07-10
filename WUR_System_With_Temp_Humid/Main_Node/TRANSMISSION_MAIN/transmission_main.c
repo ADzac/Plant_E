@@ -34,6 +34,12 @@ uint8_t SendDatabase = 0;
 
 uint8_t firstResponseTime;
 
+#define DATA_COLLECTION_TIMEOUT 30000  // 30 seconds timeout
+#define MAX_RETRIES 3
+
+uint32_t dataCollectionStartTime;
+uint8_t collectionPhase = 0;  // 0=idle, 1=collecting, 2=complete
+uint8_t retryCount = 0;
 
 static DataReport receivedData[MAX_NODES];
 static uint8_t receivedDataCount;
@@ -83,6 +89,7 @@ uint8_t assignIDToUID(uint8_t *uid) {
     uint8_t newID = nextAvailableID;  // Or generate using any other method
     memcpy(knownNodes[nodeCount].uid, uid, 4);
     knownNodes[nodeCount].assignedID = newID;
+    UpdateNodeStatus(newID,NODE_STATUS_DISCOVERED);
     nodeCount++;
 
     printf("Assigned new ID %d to UID [%02X %02X %02X %02X]\n\r",newID, uid[0], uid[1], uid[2], uid[3]);
@@ -90,6 +97,21 @@ uint8_t assignIDToUID(uint8_t *uid) {
     return newID;
 }
 
+// Update node status
+void UpdateNodeStatus(uint8_t nodeID, NodeStatus status) {
+    for (int i = 0; i < nodeCount; i++) {
+        if (knownNodes[i].assignedID == nodeID) {
+            knownNodes[i].status = status;
+            knownNodes[i].lastSeen = HAL_GetTick();
+            if (status == NODE_STATUS_RESPONDING) {
+                knownNodes[i].missedResponses = 0;
+            } else if (status == NODE_STATUS_TIMEOUT) {
+                knownNodes[i].missedResponses++;
+            }
+            break;
+        }
+    }
+}
 
 // Function to add an ID to the IDList if it doesn't already exist
 void AddToIDList(uint8_t id) {
@@ -161,19 +183,106 @@ void DiscoveryPhaseHandler(Packet* rxPacketPtr) {
     MX_APPE_Process();      // Continue processing (maybe RF stack-related)
 }
 
-void SendToDataBase(void){
-	if (SendDatabase == 0){
-		printf("Sending to DB \n\r");
-		for (int i = 1; i < IDListSize+1; i++) {
-		        if (receivedData[i].received) {
-		            printf("%x,%d,%d \n\r", receivedData[i].id, receivedData[i].temp, receivedData[i].humid);
-		        } else {
-		            printf("%x,N/A,N/A\n\r", i);  // Mark missing node
-		        }
-		    }
-		SendDatabase = 1;
-	}
+
+// Enhanced database reporting
+void SendToDataBase(void) {
+    if (SendDatabase == 0) {
+        uint32_t timestamp = HAL_GetTick();
+        uint8_t missingNodes = 0;
+
+        printf("=== DATA COLLECTION REPORT ===\n\r");
+        printf("Timestamp: %lu ms\n\r", timestamp);
+        printf("Expected nodes: %d\n\r", IDListSize);
+        printf("Responded nodes: %d\n\r", receivedDataCount);
+
+        // Report all expected nodes
+        for (int i = 0; i < IDListSize; i++) {
+            uint8_t nodeID = IDList[i];
+            if (nodeID < MAX_NODES && receivedData[nodeID].received) {
+                printf("Node %02X: Temp=%d°C, Humid=%d%%\n\r",
+                       nodeID, receivedData[nodeID].temp, receivedData[nodeID].humid);
+            } else {
+                printf("Node %02X: MISSING/TIMEOUT\n\r", nodeID);
+                missingNodes++;
+            }
+        }
+
+        // Summary statistics
+        float responseRate = (float)(receivedDataCount) / IDListSize * 100.0f;
+        printf("Response rate: %.1f%% (%d/%d)\n\r", responseRate, receivedDataCount, IDListSize);
+
+        if (missingNodes > 0) {
+            printf("WARNING: %d nodes did not respond\n\r", missingNodes);
+        }
+
+        printf("=== END REPORT ===\n\r\n\r");
+        SendDatabase = 1;
+    }
 }
+
+void HandleDataCollection(void) {
+    uint32_t currentTime = HAL_GetTick();
+
+    switch(collectionPhase) {
+        case 0: // Idle - start collection
+            if (IDListSize > 0) {
+                dataCollectionStartTime = currentTime;
+                collectionPhase = 1;
+                printf("Starting data collection from %d nodes\n\r", IDListSize);
+            }
+            break;
+
+        case 1: // Collecting
+            // Check if we have all responses OR timeout reached
+            if (receivedDataCount >= IDListSize ||
+                (currentTime - dataCollectionStartTime) > DATA_COLLECTION_TIMEOUT) {
+
+                // If timeout and we haven't received all data, try retry
+                if (receivedDataCount < IDListSize && retryCount < MAX_RETRIES) {
+                    printf("Timeout! Received %d/%d responses. Retry %d/%d\n\r",
+                           receivedDataCount, IDListSize, retryCount + 1, MAX_RETRIES);
+
+                    // Send data request to missing nodes only
+                    SendDataRequestToMissingNodes();
+                    retryCount++;
+                    dataCollectionStartTime = currentTime; // Reset timeout
+                } else {
+                    // Either got all data or exhausted retries
+                    collectionPhase = 2;
+                    printf("Data collection complete: %d/%d nodes responded\n\r",
+                           receivedDataCount, IDListSize);
+                    SendToDataBase();
+                }
+            }
+            break;
+
+        case 2: // Complete - send to database
+            collectionPhase = 0;  // Reset for next cycle
+            retryCount = 0;
+            break;
+    }
+}
+
+// Send data request only to nodes that haven't responded
+void SendDataRequestToMissingNodes(void) {
+    for (int i = 0; i < IDListSize; i++) {
+        uint8_t nodeID = IDList[i];
+        if (nodeID < MAX_NODES && !receivedData[nodeID].received) {
+            // Send targeted data request
+            txPacket.TransmissionType = DATAREQ;
+            txPacket.ID = MAIN_NODE_ID;
+            txPacket.Destination = nodeID;
+            txPacket.Payload[2] = 0;
+            txPacket.Payload[3] = 5;
+
+            CreateLPAWURFrameV2();
+            HAL_Delay(10);  // Small delay between transmissions
+            MX_APPE_Process();
+            printf("Retry data request sent to node %d\n\r", nodeID);
+        }
+    }
+}
+
 //----------------------------- TX ------------------------------------
 void SendPacket() {
     HAL_PWREx_EnableInternalWakeUpLine(PWR_WAKEUP_RTC, PWR_WUP_RISIEDG);
@@ -237,17 +346,19 @@ void GotoRx(uint8_t* PR) {
                 break;
 
             case DATAREP:
-            	if (rxPacket.ID == UNASSIGNED_ID){
-            		printf("Unknown NODE \n\r");
-            		txPacket.ID = MAIN_NODE_ID;
+            	if (rxPacket.ID == UNASSIGNED_ID) {
+					printf("Unknown NODE responding\n\r");
+					txPacket.ID = MAIN_NODE_ID;
 					txPacket.TransmissionType = DISCOVERY_REQ;
 					txPacket.Payload[2] = 0;
 					txPacket.Payload[3] = 5;
 					CreateLPAWURFrameV2();
 					HAL_Delay(5);
 					MX_APPE_Process();
-					printf("Packet sent \r\n");
-            	}
+					printf("Discovery request sent to unknown node\n\r");
+					break;
+				}
+
             	if (nodeCount != IDListSize){
             		for (int c = 0 ; c < nodeCount ; c ++){
             			if (knownNodes[c].assignedID == rxPacket.ID) AddToIDList(rxPacket.ID);
