@@ -49,9 +49,20 @@ typedef struct {
     uint8_t Payload[4];
 } Packet;
 
+typedef enum {
+    NODE_STATUS_UNKNOWN = 0,
+    NODE_STATUS_DISCOVERED,
+    NODE_STATUS_RESPONDING,
+    NODE_STATUS_MISSING,
+    NODE_STATUS_TIMEOUT
+} NodeStatus;
+
 typedef struct {
-    uint8_t uid[4];  // Assuming UID is 4 bytes
+    uint8_t uid[4];
     uint8_t assignedID;
+    NodeStatus status;
+    uint32_t lastSeen;
+    uint8_t missedResponses;
 } NodeEntry;
 
 typedef struct {
@@ -86,12 +97,16 @@ int8_t getAssignedID(uint8_t *uid);
 uint8_t assignIDToUID(uint8_t *uid) ;
 void AddToIDList(uint8_t id);
 void SendToDataBase(void);
+void UpdateNodeStatus(uint8_t nodeID, NodeStatus status);
+void HandleDataCollection(void);
+void SendDataRequestToMissingNodes(void);
 
 extern Packet txPacket;
 extern Packet rxPacket;
 extern uint8_t vectcTxBuff[15];
 extern uint8_t alreadyReceived;
 extern uint8_t firstResponseTime;
+extern uint8_t collectionPhase;
 
 extern uint8_t IDList[255];  // Start with all zeros
 extern uint8_t IDListSize;
