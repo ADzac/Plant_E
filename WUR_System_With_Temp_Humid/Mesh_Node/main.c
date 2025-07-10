@@ -1,12 +1,23 @@
-
-/*
- * main.c
- *
- *  Created on: Jun 6, 2025
- *      Author: mzakri
- */
-
 #include "main.h"
+
+#define WAKEUP_TIMEOUT 60000 // 10 seconds
+
+uint8_t wakeup_counter = 24;
+uint8_t TYPE = DISCOVERY_REQ;
+uint32_t wakeupSource2;
+
+uint8_t vectcTxBuffV2[15];
+
+uint8_t mode = 0; // RX = 1 , TX = 0
+uint8_t packet_Received = 0;
+
+float temperature=0;
+float humidity = 0;
+
+// Global scope
+int startTimeout;
+
+Packet myPacket;
 
 SMRSubGConfig MRSUBG_RadioInitStruct;
 MRSubG_PcktBasicFields MRSUBG_PacketSettingsStruct;
@@ -18,12 +29,15 @@ void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_MRSUBG_Init(void);
 static void MX_GPIO_Init(void);
+void UTIL_LPM_EnterLowPower(void);
 void UTIL_LPM_Init(void);
 void RX_TX_Init(void);
 static void MX_LPAWUR_Init(void);
-static void MX_RNG_Init(void);
 void UTIL_LPM_Init( void );
 void MX_I2C2_Init(void);
+void MX_RTC_Init(void);
+void configRTCWakeupTimer(uint32_t timeout);
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc);
 /*----------------------------------------------------------------------------*/
 
 int main(void)
@@ -37,22 +51,72 @@ int main(void)
 	MX_I2C2_Init();
 	MX_LPAWUR_Init();
 	UTIL_LPM_Init();
-	MX_RNG_Init();
 	RX_TX_Init();
-	GETUID(UID);
-	InitRoutingTable();
-	myCache.lastSenderID = 255;
-	myCache.lastTransType = 255;
-	myCache.lastRxTime = 0;
-	datareqSent = 0;
-	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
+	MX_RTC_Init();
+	configRTCWakeupTimer(WAKEUP_TIMEOUT);
+
+
+	txPacket.TransmissionType = TYPE;
+	txPacket.ID = MAIN_NODE_ID;
+	txPacket.Destination = UNASSIGNED_ID;
+	printf("STM32WL3 LPAWUR - Main Node Started\n\r");
 
 	while (1)
 	{
-		GotoRx(vectcTxBuff);
-		MX_APPE_Idle();
+		// Handle transmission phase
+		if (mode == 0) {
+			SendPacket();
+			mode = 1;
+		}
 
+		// Handle data collection with timeout
+		HandleDataCollection();
+
+		// Handle incoming packets
+		GotoRx(&packet_Received);
+
+		// Enter low power mode
+		MX_APPE_Idle();
 	}
+}
+
+// Modified RTC callback to handle collection timeout
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
+{
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
+    mode = 0;
+
+    // Check if we're in middle of data collection
+    if (collectionPhase == 1) {
+        printf("RTC wakeup during data collection\n\r");
+        txPacket.ID = MAIN_NODE_ID;
+		txPacket.Destination = MAIN_NODE_ID;
+		txPacket.TransmissionType = DATAREQ;
+		txPacket.Payload[2] = 0;
+		txPacket.Payload[3] = 5;
+        return; // Don't start new cycle if collecting
+    }
+
+    // Initialize data storage for new cycle
+    init_data_storage();
+    startTimeout = HAL_GetTick();
+   printf("======================== New cycle Starto ======================== \n\r");
+
+    if (wakeup_counter >= 24) {
+        TYPE = DISCOVERY_REQ;
+        BSP_LED_Toggle(LD3);
+        wakeup_counter = 1;
+    } else {
+        TYPE = DATAREQ;
+        BSP_LED_Toggle(LD1);
+    }
+
+    wakeup_counter++;
+    txPacket.ID = MAIN_NODE_ID;
+    txPacket.Destination = MAIN_NODE_ID;
+    txPacket.TransmissionType = TYPE;
+    txPacket.Payload[2] = 0;
+    txPacket.Payload[3] = 5;
 }
 
 void RX_TX_Init(void){
@@ -72,26 +136,6 @@ void RX_TX_Init(void){
 	LL_MRSubG_PacketHandlerManchesterType(MANCHESTER_TYPE0);
 	__HAL_MRSUBG_SET_TX_MODE(TX_NORMAL);
 	__HAL_MRSUBG_SET_DATABUFFER0_POINTER((uint32_t)&vectcTxBuff);
-}
-
-static void MX_RNG_Init(void)
-{
-
-  /* USER CODE BEGIN RNG_Init 0 */
-
-  /* USER CODE END RNG_Init 0 */
-
-  /* Peripheral clock enable */
-  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_RNG);
-
-  /* USER CODE BEGIN RNG_Init 1 */
-
-  /* USER CODE END RNG_Init 1 */
-  LL_RNG_Enable(RNG);
-  /* USER CODE BEGIN RNG_Init 2 */
-
-  /* USER CODE END RNG_Init 2 */
-
 }
 
 static void MX_MRSUBG_Init(void)
@@ -147,9 +191,9 @@ static void MX_LPAWUR_Init(void)
 	LPAWUR_FrameInitStruct.KpGain = 6;
 	LPAWUR_FrameInitStruct.KiGain = 10;
 	HAL_LPAWUR_FrameInit(&LPAWUR_FrameInitStruct);
+
 	LL_LPAWUR_SetState(ENABLE);
 }
-
 
 void SystemClock_Config(void)
 {
@@ -193,6 +237,7 @@ void MX_GPIO_Init(void)
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
 }
+
 
 #ifdef  USE_FULL_ASSERT
 
