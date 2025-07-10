@@ -98,7 +98,7 @@ void printRoutingTable(void) {
     printf("=== Routing Table ===\r\n");
 
     for (int i = 0; i < MAX_ROUTES; i++) {
-		printf("Slot %d: NodeID: %u | NextHop: %u | Hops: %u\r\n",
+		if (routingTable[i].nodeID != UNASSIGNED_ID) printf("Slot %d: NodeID: %u | NextHop: %u | Hops: %u\r\n",
 			   i,
 			   routingTable[i].nodeID,
 			   routingTable[i].nextHop,
@@ -274,8 +274,6 @@ void GotoRx(uint8_t* vectcTxBuff) {
         if (hopper != 0) printf("Received from a hopper ID %d \r\n",hopper);
 
         if (transType != ID_ASSIGNMENT  && transType != ALERT  && transType != DISCOVERY_RESP){
-        	printf("%d \n\r",transType);
-        	printf("%d \n\r",rxPacket.Destination);
 			UpdateRoutingTable(hopper, rxPacket.Destination, rxPacket.Payload[2]);
 			printRoutingTable();
         }
