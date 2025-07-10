@@ -38,8 +38,8 @@ uint8_t firstResponseTime;
 #define MAX_RETRIES 3
 
 uint32_t dataCollectionStartTime;
-uint8_t collectionPhase = 0;  // 0=idle, 1=collecting, 2=complete
-uint8_t retryCount = 0;
+uint8_t collectionPhase;  // 0=idle, 1=collecting, 2=complete
+uint8_t retryCount;
 
 static DataReport receivedData[MAX_NODES];
 static uint8_t receivedDataCount;
@@ -225,10 +225,11 @@ void HandleDataCollection(void) {
 
     switch(collectionPhase) {
         case 0: // Idle - start collection
+
             if (IDListSize > 0) {
                 dataCollectionStartTime = currentTime;
                 collectionPhase = 1;
-                printf("Starting data collection from %d nodes\n\r", IDListSize);
+
             }
             break;
 
@@ -247,18 +248,12 @@ void HandleDataCollection(void) {
                     retryCount++;
                     dataCollectionStartTime = currentTime; // Reset timeout
                 } else {
-                    // Either got all data or exhausted retries
-                    collectionPhase = 2;
                     printf("Data collection complete: %d/%d nodes responded\n\r",
                            receivedDataCount, IDListSize);
                     SendToDataBase();
+                    collectionPhase = 2;  // Reset for next cycle
                 }
             }
-            break;
-
-        case 2: // Complete - send to database
-            collectionPhase = 0;  // Reset for next cycle
-            retryCount = 0;
             break;
     }
 }
@@ -346,7 +341,7 @@ void GotoRx(uint8_t* PR) {
                 break;
 
             case DATAREP:
-            	if (rxPacket.ID == UNASSIGNED_ID) {
+            	if (rxPacket.ID == UNASSIGNED_ID || rxPacket.ID > nextAvailableID) {
 					printf("Unknown NODE responding\n\r");
 					txPacket.ID = MAIN_NODE_ID;
 					txPacket.TransmissionType = DISCOVERY_REQ;
@@ -383,7 +378,6 @@ void GotoRx(uint8_t* PR) {
                 	               rxPacket.ID, rxPacket.Payload[0], rxPacket.Payload[1]);
                 	    }
                 	}
-                if (receivedDataCount == IDListSize) SendToDataBase();
                 break;
 
             case DATAREQ:
