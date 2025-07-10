@@ -15,8 +15,7 @@ float temperature=0;
 float humidity = 0;
 
 // Global scope
-int startTimeout;  // Just declare
-
+int startTimeout;
 
 Packet myPacket;
 
@@ -60,46 +59,64 @@ int main(void)
 	txPacket.TransmissionType = TYPE;
 	txPacket.ID = MAIN_NODE_ID;
 	txPacket.Destination = UNASSIGNED_ID;
-	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
+	printf("STM32WL3 LPAWUR - Main Node Started\n\r");
 
 	while (1)
 	{
-		if (mode == 0){
+		// Handle transmission phase
+		if (mode == 0) {
 			SendPacket();
 			mode = 1;
 		}
 
+		// Handle data collection with timeout
+		HandleDataCollection();
+
+		// Handle incoming packets
 		GotoRx(&packet_Received);
-		MX_APPE_Idle(); // Enter Stop mode
+
+		// Enter low power mode
+		MX_APPE_Idle();
 	}
 }
 
+// Modified RTC callback to handle collection timeout
 void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 {
-    // Clear the wake-up timer interrupt flag
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
     mode = 0;
 
-   init_data_storage();
-   startTimeout = HAL_GetTick();
+    // Check if we're in middle of data collection
+    if (collectionPhase == 1) {
+        printf("RTC wakeup during data collection\n\r");
+        txPacket.ID = MAIN_NODE_ID;
+		txPacket.Destination = MAIN_NODE_ID;
+		txPacket.TransmissionType = DATAREQ;
+		txPacket.Payload[2] = 0;
+		txPacket.Payload[3] = 5;
+        return; // Don't start new cycle if collecting
+    }
 
-   if (wakeup_counter >= 24) {
-	   TYPE = DISCOVERY_REQ;
-	   BSP_LED_Toggle(LD3);
-	   wakeup_counter = 1;
-   } else {
-	   TYPE = DATAREQ;
-	   BSP_LED_Toggle(LD1);
-   }
+    // Initialize data storage for new cycle
+    init_data_storage();
+    startTimeout = HAL_GetTick();
+   printf("======================== New cycle Starto ======================== \n\r");
 
-   wakeup_counter++;
-   txPacket.ID = MAIN_NODE_ID;
-   txPacket.Destination = MAIN_NODE_ID;
-   txPacket.TransmissionType = TYPE;
-   txPacket.Payload[2] = 0;
-   txPacket.Payload[3] = 5;
+    if (wakeup_counter >= 24) {
+        TYPE = DISCOVERY_REQ;
+        BSP_LED_Toggle(LD3);
+        wakeup_counter = 1;
+    } else {
+        TYPE = DATAREQ;
+        BSP_LED_Toggle(LD1);
+    }
 
-    //printf("Counter %d \r\n", wakeup_counter);
+    wakeup_counter++;
+    txPacket.ID = MAIN_NODE_ID;
+    txPacket.Destination = MAIN_NODE_ID;
+    txPacket.TransmissionType = TYPE;
+    txPacket.Payload[2] = 0;
+    txPacket.Payload[3] = 5;
 }
 
 void RX_TX_Init(void){
@@ -177,7 +194,6 @@ static void MX_LPAWUR_Init(void)
 
 	LL_LPAWUR_SetState(ENABLE);
 }
-
 
 void SystemClock_Config(void)
 {
