@@ -107,6 +107,7 @@ extern uint8_t vectcTxBuff[15];
 extern uint8_t alreadyReceived;
 extern uint8_t firstResponseTime;
 extern uint8_t collectionPhase;
+extern uint8_t retryCount;
 
 extern uint8_t IDList[255];  // Start with all zeros
 extern uint8_t IDListSize;
