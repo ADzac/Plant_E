@@ -55,7 +55,7 @@ int main(void)
 	RX_TX_Init();
 	MX_RTC_Init();
 	configRTCWakeupTimer(WAKEUP_TIMEOUT_STD);
-
+	 collectionPhase = 0;
 
 	txPacket.TransmissionType = TYPE;
 	txPacket.ID = MAIN_NODE_ID;
@@ -86,6 +86,23 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(hrtc, RTC_FLAG_WUTF);
     mode = 0;
 
+    printf("======================== New cycle Starto : %d ======================== \n\r",wakeup_counter);
+
+     if (wakeup_counter >= 24) {
+         TYPE = DISCOVERY_REQ;
+         BSP_LED_Toggle(LD3);
+         configRTCWakeupTimer(WAKEUP_TIMEOUT_RETRY);
+         if (wakeup_counter == 28) {
+        	 wakeup_counter = 0;
+        	 configRTCWakeupTimer(WAKEUP_TIMEOUT_STD);
+         }
+     } else{
+         retryCount = 0;
+         TYPE = DATAREQ;
+         BSP_LED_Toggle(LD1);
+
+     }
+
 
     // Check if we're in middle of data collection
     if (collectionPhase == 1) {
@@ -98,22 +115,10 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
         // Initialize data storage for new cycle
         init_data_storage();
         startTimeout = HAL_GetTick();
+        mode = 1;
+        return;
     }
 
-
-   printf("======================== New cycle Starto : %d ======================== \n\r",wakeup_counter);
-
-    if (wakeup_counter >= 24) {
-        TYPE = DISCOVERY_REQ;
-        BSP_LED_Toggle(LD3);
-        wakeup_counter = 0;
-    } else{
-    	collectionPhase = 0;
-        retryCount = 0;
-        TYPE = DATAREQ;
-        BSP_LED_Toggle(LD1);
-        configRTCWakeupTimer(WAKEUP_TIMEOUT_RETRY);
-    }
 
     wakeup_counter++;
     txPacket.ID = MAIN_NODE_ID;
