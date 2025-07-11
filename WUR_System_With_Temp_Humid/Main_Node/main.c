@@ -1,6 +1,7 @@
 #include "main.h"
 
-#define WAKEUP_TIMEOUT 60000 // 10 seconds
+#define WAKEUP_TIMEOUT_STD 30000 // 10 seconds
+#define WAKEUP_TIMEOUT_RETRY 10000
 
 uint8_t wakeup_counter = 24;
 uint8_t TYPE = DISCOVERY_REQ;
@@ -53,7 +54,7 @@ int main(void)
 	UTIL_LPM_Init();
 	RX_TX_Init();
 	MX_RTC_Init();
-	configRTCWakeupTimer(WAKEUP_TIMEOUT);
+	configRTCWakeupTimer(WAKEUP_TIMEOUT_STD);
 
 
 	txPacket.TransmissionType = TYPE;
@@ -88,29 +89,30 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 
     // Check if we're in middle of data collection
     if (collectionPhase == 1) {
-        printf("RTC wakeup during data collection\n\r");
-        txPacket.ID = MAIN_NODE_ID;
-		txPacket.Destination = MAIN_NODE_ID;
-		txPacket.TransmissionType = DATAREQ;
-		txPacket.Payload[2] = 0;
-		txPacket.Payload[3] = 5;
-        return; // Don't start new cycle if collecting
+        configRTCWakeupTimer(WAKEUP_TIMEOUT_RETRY);
     }
-    if (collectionPhase == 2) collectionPhase = 0;
+    if (collectionPhase == 2 && wakeup_counter %4 == 0) {
+        SendToDataBase();
+        collectionPhase = 0;
+        configRTCWakeupTimer(WAKEUP_TIMEOUT_STD);
+        // Initialize data storage for new cycle
+        init_data_storage();
+        startTimeout = HAL_GetTick();
+    }
 
-    // Initialize data storage for new cycle
-    init_data_storage();
-    startTimeout = HAL_GetTick();
-   printf("======================== New cycle Starto ======================== \n\r");
+
+   printf("======================== New cycle Starto : %d ======================== \n\r",wakeup_counter);
 
     if (wakeup_counter >= 24) {
         TYPE = DISCOVERY_REQ;
         BSP_LED_Toggle(LD3);
-        wakeup_counter = 1;
-    } else {
+        wakeup_counter = 0;
+    } else{
+    	collectionPhase = 0;
         retryCount = 0;
         TYPE = DATAREQ;
         BSP_LED_Toggle(LD1);
+        configRTCWakeupTimer(WAKEUP_TIMEOUT_RETRY);
     }
 
     wakeup_counter++;
@@ -119,6 +121,7 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     txPacket.TransmissionType = TYPE;
     txPacket.Payload[2] = 0;
     txPacket.Payload[3] = 5;
+
 }
 
 void RX_TX_Init(void){
