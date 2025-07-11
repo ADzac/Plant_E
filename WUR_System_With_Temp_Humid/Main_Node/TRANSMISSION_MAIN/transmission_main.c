@@ -192,8 +192,6 @@ void SendToDataBase(void) {
 
         printf("=== DATA COLLECTION REPORT ===\n\r");
         printf("Timestamp: %lu ms\n\r", timestamp);
-        printf("Expected nodes: %d\n\r", IDListSize);
-        printf("Responded nodes: %d\n\r", receivedDataCount);
 
         // Report all expected nodes
         for (int i = 0; i < IDListSize; i++) {
@@ -222,14 +220,14 @@ void SendToDataBase(void) {
 
 void HandleDataCollection(void) {
     uint32_t currentTime = HAL_GetTick();
-
+    if (retryCount == 4) collectionPhase =2;
     switch(collectionPhase) {
         case 0: // Idle - start collection
 
             if (IDListSize > 0) {
                 dataCollectionStartTime = currentTime;
                 collectionPhase = 1;
-
+                printf("RTC wakeup during data collection\n\r");
             }
             break;
 
@@ -245,17 +243,15 @@ void HandleDataCollection(void) {
 
                     // Send data request to missing nodes only
                     SendDataRequestToMissingNodes();
-                    retryCount++;
                     dataCollectionStartTime = currentTime; // Reset timeout
                 } else {
-                    printf("Data collection complete: %d/%d nodes responded\n\r",
-                           receivedDataCount, IDListSize);
-                    SendToDataBase();
+                	printf("All collected \n\r");
                     collectionPhase = 2;  // Reset for next cycle
                 }
             }
             break;
     }
+    retryCount++;
 }
 
 // Send data request only to nodes that haven't responded
@@ -341,7 +337,7 @@ void GotoRx(uint8_t* PR) {
                 break;
 
             case DATAREP:
-            	if (rxPacket.ID == UNASSIGNED_ID || rxPacket.ID > nextAvailableID) {
+            	if (rxPacket.ID == UNASSIGNED_ID || rxPacket.ID > IDListSize) {
 					printf("Unknown NODE responding\n\r");
 					txPacket.ID = MAIN_NODE_ID;
 					txPacket.TransmissionType = DISCOVERY_REQ;
@@ -367,6 +363,9 @@ void GotoRx(uint8_t* PR) {
 
             	if (IsInIDList(rxPacket.ID)== 1) {
                 	    if (receivedData[rxPacket.ID].received == 1) {
+                	    	printf("Updating..\n\r");
+                	    	receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
+                	        receivedData[rxPacket.ID].humid = rxPacket.Payload[1];
                 	    } else if (rxPacket.ID < MAX_NODES) {
                     	    	receivedData[rxPacket.ID].id = rxPacket.ID;
                     	        receivedData[rxPacket.ID].temp = rxPacket.Payload[0];
