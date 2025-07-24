@@ -20,17 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "schedule.h"
 
-#define DISCOVERY 0
-#define DATAREQ 1
-#define ALERT 2
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
 RTC_HandleTypeDef hrtc;
 
 /* USER CODE BEGIN PV */
