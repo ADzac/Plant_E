@@ -2,6 +2,7 @@
  * temphumid.c
  *
  *  Created on: Jun 2, 2025
+ *  Updated on: July 23 2025
  *      Author: mzakri
  */
 /* Includes ------------------------------------------------------------------*/
@@ -53,7 +54,7 @@ HAL_StatusTypeDef Si7021_Init(void)
   }
 
   // Wait for reset to complete
-  HAL_Delay(15);
+  HAL_Delay(10);
 
   // Check if device is ready
   status = HAL_I2C_IsDeviceReady(&hi2c2, SI7021_ADDRESS << 1, 3, 1000);

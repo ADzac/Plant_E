@@ -3,6 +3,7 @@
  *
  * Reworked for Mesh Network
  *  Created on: Jun 6, 2025
+ *  Updated on: July 23 2025
  *      Author: mzakri
  */
 #include "transmission_mesh.h"
@@ -210,9 +211,9 @@ void SimpleRand16(void)
 			if(val < 1000) val +=10000;
 			break;
 		default:
-			val /= 2;
-			if(val < 16000) val +=16000;
-			if (val > 20000) val = 20000 + LL_RNG_ReadRandData16(RNG)/32;
+			val /= 20;
+			if(val < 1600) val +=1600;
+			if (val > 2000) val = 2000+ LL_RNG_ReadRandData16(RNG)/32;
 			break;
 	}
 	printf("Random Delay: %d\r\n", val);

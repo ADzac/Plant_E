@@ -3,6 +3,7 @@
  * main.c
  *
  *  Created on: Jun 6, 2025
+ *  Updated on: July 23 2025
  *      Author: mzakri
  */
 
@@ -45,7 +46,7 @@ int main(void)
 	myCache.lastTransType = 255;
 	myCache.lastRxTime = 0;
 	datareqSent = 0;
-	printf("STM32WL3 LPAWUR - Transmitter example.\n\r");
+	printf("STM32WL3 LPAWUR - Mesh Node.\n\r");
 
 	while (1)
 	{
