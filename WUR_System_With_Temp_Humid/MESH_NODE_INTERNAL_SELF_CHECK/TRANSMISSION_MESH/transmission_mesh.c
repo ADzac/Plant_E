@@ -35,6 +35,14 @@ void TempANDHumidSensor() {
         printf("TEMP: %.2f°C, HUMID: %.2f \n\r", temp, humid);
         temp = round(temp);
         humid = round(humid);
+        if (temp > 55) {
+        	txPacket.TransmissionType = ALERT;
+        	txPacket.ID = myID;
+			txPacket.Destination = myID; //for hop routing cases
+			txPacket.Payload[0] = temp;
+			txPacket.Payload[1] = humid;
+        	SendPacket(vectcTxBuff);
+        }
     }
     else BSP_LED_On(LED_RED);
 }
