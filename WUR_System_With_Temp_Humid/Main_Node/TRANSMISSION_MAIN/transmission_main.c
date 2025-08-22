@@ -485,7 +485,7 @@ void PacketHandler(uint8_t LPAWUR_Pay[8], Packet* handle_packet) {
  * This is the central function that handles all incoming network traffic
  * @param PR: Processing parameter (unused in current implementation)
  */
-void GotoRx(uint8_t* PR) {
+void GotoRx(void) {
     LL_LPAWUR_SetState(ENABLE);  // Enable LPAWUR receiver
 
     // Enable LPAWUR wake-up interrupt
