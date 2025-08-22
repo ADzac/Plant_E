@@ -86,7 +86,7 @@ void CreateLPAWURFrameV2();
 void SendPacket();
 void MX_APPE_Process(void);
 void UpdateRssiStats(int16_t rssi, int print_stats);
-void GotoRx(uint8_t* PR);
+void GotoRx(void);
 void MX_APPE_Idle(void);
 void GETUID(uint8_t *uid);
 void DiscoveryPhaseHandler(Packet* rxPacketptr);
